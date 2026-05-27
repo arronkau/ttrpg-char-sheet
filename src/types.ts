@@ -1,6 +1,14 @@
 export type EntityType = "character" | "retainer" | "mount" | "vehicle" | "hireling" | "storage";
 
-export type InventoryLocation = "carried_loose" | "equipped" | "in_hand" | "stowed" | "container";
+export type HandSlot = "left_hand" | "right_hand" | "both_hands";
+
+export type ContainerLoadCategory = "equipped" | "stowed";
+
+export type InventoryLocation =
+  | { kind: "equipped" }
+  | { kind: "contained"; parentEntryId: string };
+
+export type InventoryActionResult = { ok: true } | { ok: false; message: string };
 
 export type ViewMode = "gm" | "player";
 
@@ -30,7 +38,6 @@ export type Campaign = {
   createdAt: string;
   updatedAt: string;
   settings: CampaignSettings;
-  activeEntityIds: string[];
 };
 
 export type Entity = {
@@ -123,6 +130,7 @@ export type ItemTemplate = {
     capacitySlots: number;
     canBeStowed?: boolean;
     slotsWhenStowed: number;
+    loadCategory?: ContainerLoadCategory;
   };
   treasure?: Record<string, never>;
 };
@@ -154,7 +162,7 @@ export type InventoryEntry = {
   customItem?: ItemTemplate;
   quantity: number;
   location: InventoryLocation;
-  parentEntryId?: string | null;
+  handSlot?: HandSlot | null;
   state?: InventoryEntryState;
   createdAt: string;
   updatedAt: string;
@@ -244,6 +252,8 @@ export type EntitySummary = {
   armorClass: number | null;
   attackModifier?: number;
   savingThrows?: Record<string, number>;
+  equippedSlots: number;
+  stowedSlots: number;
   carriedSlots: number;
   movementExploration: number;
   movementEncounter: number;

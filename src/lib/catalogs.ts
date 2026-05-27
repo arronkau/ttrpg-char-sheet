@@ -43,7 +43,13 @@ export function buildCatalogs(): Catalogs {
     quantity: item.quantity ?? 1,
     slotsPerUnit: item.slotsPerUnit ?? 0,
     emitsLight: item.emitsLight ?? false,
-    cursed: item.cursed ?? false
+    cursed: item.cursed ?? false,
+    container: item.container
+      ? {
+          ...item.container,
+          loadCategory: item.container.loadCategory ?? (item.id === "item_belt_pouch_005" ? "equipped" : "stowed")
+        }
+      : undefined
   }));
 
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));

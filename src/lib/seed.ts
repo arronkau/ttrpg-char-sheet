@@ -1,4 +1,4 @@
-import type { Campaign, Entity, InventoryEntry, ItemTemplate } from "../types";
+import type { Campaign, Entity, HandSlot, InventoryEntry, InventoryLocation, ItemTemplate } from "../types";
 import { classNameToId } from "./catalogs";
 
 export type CampaignSnapshot = {
@@ -37,8 +37,7 @@ export function createStarterCampaign(id: string, name = "Arden Vul Table"): Cam
     settings: {
       viewMode: "gm",
       encumbranceMethod: "slots"
-    },
-    activeEntityIds: [entityIds.mage, entityIds.dwarf, entityIds.treasure]
+    }
   };
 
   const entities: Entity[] = [
@@ -106,20 +105,31 @@ export function createStarterCampaign(id: string, name = "Arden Vul Table"): Cam
   ];
 
   const inventoryEntries: InventoryEntry[] = [
-    entry("entry-mira-backpack", entityIds.mage, "item_backpack_001", 1, "equipped", null, createdAt),
-    entry("entry-mira-torch", entityIds.mage, "item_torch_056", 3, "container", "entry-mira-backpack", createdAt),
-    entry("entry-mira-dagger", entityIds.mage, "item_dagger_079", 1, "in_hand", null, createdAt),
-    entry("entry-borin-chain", entityIds.dwarf, "item_chainmail_068", 1, "equipped", null, createdAt),
-    entry("entry-borin-shield", entityIds.dwarf, "item_shield_071", 1, "equipped", null, createdAt),
-    entry("entry-borin-sword", entityIds.dwarf, "item_sword_096", 1, "in_hand", null, createdAt),
-    entry("entry-borin-rope", entityIds.dwarf, "item_rope_50_047", 1, "carried_loose", null, createdAt),
+    entry("entry-mira-backpack", entityIds.mage, "item_backpack_001", 1, { kind: "equipped" }, null, createdAt),
+    entry("entry-mira-torch", entityIds.mage, "item_torch_056", 3, { kind: "contained", parentEntryId: "entry-mira-backpack" }, null, createdAt),
+    entry("entry-mira-dagger", entityIds.mage, "item_dagger_079", 1, { kind: "equipped" }, "right_hand", createdAt),
+    entry("entry-mira-pouch", entityIds.mage, "item_belt_pouch_005", 1, { kind: "equipped" }, null, createdAt),
+    {
+      id: "entry-mira-coins",
+      entityId: entityIds.mage,
+      customItem: createTreasureItem("treasure-mira-coins", "Coins", "Pocket money in Mira's belt pouch.", 1, 1),
+      quantity: 35,
+      location: { kind: "contained", parentEntryId: "entry-mira-pouch" },
+      handSlot: null,
+      createdAt,
+      updatedAt: createdAt
+    },
+    entry("entry-borin-chain", entityIds.dwarf, "item_chainmail_068", 1, { kind: "equipped" }, null, createdAt),
+    entry("entry-borin-shield", entityIds.dwarf, "item_shield_071", 1, { kind: "equipped" }, "left_hand", createdAt),
+    entry("entry-borin-sword", entityIds.dwarf, "item_sword_096", 1, { kind: "equipped" }, "right_hand", createdAt),
+    entry("entry-borin-rope", entityIds.dwarf, "item_rope_50_047", 1, { kind: "equipped" }, null, createdAt),
     {
       id: "entry-loot-gems",
       entityId: entityIds.treasure,
       customItem: createTreasureItem("treasure-rubies", "Ruby", "A cut ruby from a brass coffer.", 500, 0),
       quantity: 2,
-      location: "carried_loose",
-      parentEntryId: null,
+      location: { kind: "equipped" },
+      handSlot: null,
       createdAt,
       updatedAt: createdAt
     }
@@ -159,8 +169,8 @@ function entry(
   entityId: string,
   itemTemplateId: string,
   quantity: number,
-  location: InventoryEntry["location"],
-  parentEntryId: string | null,
+  location: InventoryLocation,
+  handSlot: HandSlot | null,
   timestamp: string
 ): InventoryEntry {
   return {
@@ -169,7 +179,7 @@ function entry(
     itemTemplateId,
     quantity,
     location,
-    parentEntryId,
+    handSlot,
     createdAt: timestamp,
     updatedAt: timestamp
   };

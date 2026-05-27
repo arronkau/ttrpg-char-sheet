@@ -1,8 +1,10 @@
 import type {
   Catalogs,
   ClassDefinition,
+  ContainerLoadCategory,
   Entity,
   EntitySummary,
+  HandSlot,
   InventoryEntry,
   InventoryLocation,
   InventoryNode,
@@ -11,6 +13,7 @@ import type {
   RestrictionWarning,
   ViewMode
 } from "../types";
+import { inventoryParentEntryId, isInventoryLocation } from "./inventoryIntegrity";
 
 export const EMPTY_ABILITIES = {
   strength: 10,
@@ -27,6 +30,16 @@ const ENCUMBRANCE_THRESHOLDS = [
   { max: 15, movementExploration: 60, movementEncounter: 20, label: "Heavy" },
   { max: 20, movementExploration: 30, movementEncounter: 10, label: "Burdened" }
 ];
+
+export type EntityLoadBreakdown = {
+  equippedSlots: number;
+  stowedSlots: number;
+  carriedSlots: number;
+};
+
+export type HandValidationResult =
+  | { ok: true }
+  | { ok: false; blockers: InventoryEntry[] };
 
 export function abilityModifier(score: number | undefined): number {
   const value = score ?? 10;
@@ -94,9 +107,25 @@ export function stackSlots(quantity: number, slotsPerUnit: number, stackSize?: n
   return quantity * slotsPerUnit;
 }
 
+export function parentEntryId(entry: InventoryEntry): string | null {
+  return inventoryParentEntryId(entry);
+}
+
+export function isHandSlot(slot: HandSlot | null | undefined): slot is HandSlot {
+  return slot === "left_hand" || slot === "right_hand" || slot === "both_hands";
+}
+
+export function entryHandSlot(entry: InventoryEntry): HandSlot | null {
+  return isInventoryLocation(entry.location) && entry.location.kind === "equipped" ? entry.handSlot ?? null : null;
+}
+
+export function isInUseHandEntry(entry: InventoryEntry): boolean {
+  return isHandSlot(entryHandSlot(entry));
+}
+
 export function entrySlots(entry: InventoryEntry, catalogs: Catalogs): number {
   const item = entryItem(entry, catalogs);
-  if (entry.location === "container" && item.container?.slotsWhenStowed !== undefined) {
+  if (parentEntryId(entry) && item.container?.slotsWhenStowed !== undefined) {
     return stackSlots(entry.quantity, item.container.slotsWhenStowed, item.stackSize);
   }
   return stackSlots(entry.quantity, item.slotsPerUnit, item.stackSize);
@@ -119,11 +148,18 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
   });
 
   const byEntityId: Record<string, InventoryNode[]> = {};
+  const entryById = new Map(entries.map((entry) => [entry.id, entry]));
 
   for (const node of allNodes) {
-    const parentId = node.entry.parentEntryId;
+    const parentId = parentEntryId(node.entry);
     const parent = parentId ? nodeById.get(parentId) : undefined;
-    if (parent) {
+    if (
+      parentId &&
+      parent &&
+      parent.entry.entityId === node.entry.entityId &&
+      parent.item.type === "container" &&
+      !wouldCreateParentCycle(node.entry.id, parentId, entryById)
+    ) {
       parent.children.push(node);
     } else {
       byEntityId[node.entry.entityId] ??= [];
@@ -131,28 +167,124 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
     }
   }
 
-  const sortNodes = (nodes: InventoryNode[]) => {
-    nodes.sort((a, b) => a.item.name.localeCompare(b.item.name));
-    nodes.forEach((node) => sortNodes(node.children));
+  const sortNodes = (nodes: InventoryNode[], seenIds = new Set<string>()) => {
+    nodes.sort((a, b) => {
+      const aContainer = a.item.type === "container" ? 0 : 1;
+      const bContainer = b.item.type === "container" ? 0 : 1;
+      return aContainer - bContainer || a.item.name.localeCompare(b.item.name);
+    });
+    nodes.forEach((node) => {
+      if (seenIds.has(node.entry.id)) return;
+      sortNodes(node.children, new Set([...seenIds, node.entry.id]));
+    });
   };
-  Object.values(byEntityId).forEach(sortNodes);
+  Object.values(byEntityId).forEach((nodes) => sortNodes(nodes));
 
-  const computeUsedSlots = (node: InventoryNode): number => {
+  const computeUsedSlots = (node: InventoryNode, seenIds = new Set<string>()): void => {
+    if (seenIds.has(node.entry.id)) return;
+    const nextSeenIds = new Set([...seenIds, node.entry.id]);
     const childSlots = node.children.reduce((total, child) => total + entrySlots(child.entry, catalogs), 0);
     node.usedSlots = childSlots;
     node.overCapacity = node.capacitySlots !== undefined && childSlots > node.capacitySlots;
-    node.children.forEach(computeUsedSlots);
-    return childSlots;
+    node.children.forEach((child) => computeUsedSlots(child, nextSeenIds));
   };
   allNodes.forEach((node) => computeUsedSlots(node));
 
   return { byEntityId, allNodes };
 }
 
-export function entityCarriedSlots(entityId: string, entries: InventoryEntry[], catalogs: Catalogs): number {
-  return entries
-    .filter((entry) => entry.entityId === entityId && !entry.parentEntryId)
-    .reduce((total, entry) => total + entrySlots(entry, catalogs), 0);
+function wouldCreateParentCycle(entryId: string, parentId: string, entryById: Map<string, InventoryEntry>): boolean {
+  const seenIds = new Set<string>();
+  let currentId: string | null = parentId;
+  while (currentId) {
+    if (currentId === entryId || seenIds.has(currentId)) return true;
+    seenIds.add(currentId);
+    const current = entryById.get(currentId);
+    currentId = current ? parentEntryId(current) : null;
+  }
+  return false;
+}
+
+export function carriedLoadCategory(
+  entry: InventoryEntry,
+  entries: InventoryEntry[],
+  catalogs: Catalogs
+): ContainerLoadCategory {
+  const root = outerCarriedEntry(entry, entries);
+  const item = entryItem(root, catalogs);
+  return item.container?.loadCategory ?? "equipped";
+}
+
+function outerCarriedEntry(entry: InventoryEntry, entries: InventoryEntry[]): InventoryEntry {
+  const entryById = new Map(entries.map((candidate) => [candidate.id, candidate]));
+  let current = entry;
+  const seenIds = new Set<string>();
+  let parentId = parentEntryId(current);
+  while (parentId && !seenIds.has(current.id)) {
+    seenIds.add(current.id);
+    const parent = entryById.get(parentId);
+    if (!parent) return current;
+    current = parent;
+    parentId = parentEntryId(current);
+  }
+  return current;
+}
+
+export function entityLoadBreakdown(entityId: string, entries: InventoryEntry[], catalogs: Catalogs): EntityLoadBreakdown {
+  const load = {
+    equippedSlots: 0,
+    stowedSlots: 0,
+    carriedSlots: 0
+  };
+
+  for (const entry of entries.filter((candidate) => candidate.entityId === entityId)) {
+    const slots = entrySlots(entry, catalogs);
+    if (carriedLoadCategory(entry, entries, catalogs) === "stowed") {
+      load.stowedSlots += slots;
+    } else {
+      load.equippedSlots += slots;
+    }
+  }
+
+  load.carriedSlots = load.equippedSlots + load.stowedSlots;
+  return load;
+}
+
+export function handsOccupiedBySlot(slot: HandSlot): Array<"left_hand" | "right_hand"> {
+  if (slot === "both_hands") return ["left_hand", "right_hand"];
+  return [slot];
+}
+
+export function entityHandOccupancy(entityId: string, entries: InventoryEntry[]): Record<"left_hand" | "right_hand", InventoryEntry[]> {
+  const hands: Record<"left_hand" | "right_hand", InventoryEntry[]> = { left_hand: [], right_hand: [] };
+  for (const entry of entries.filter((candidate) => candidate.entityId === entityId)) {
+    const slot = entryHandSlot(entry);
+    if (!slot) continue;
+    for (const hand of handsOccupiedBySlot(slot)) {
+      hands[hand].push(entry);
+    }
+  }
+  return hands;
+}
+
+export function validateHandAssignment(
+  entityId: string,
+  entries: InventoryEntry[],
+  handSlot: HandSlot | null | undefined,
+  ignoreEntryId?: string
+): HandValidationResult {
+  if (!handSlot) return { ok: true };
+  const occupiedHands = handsOccupiedBySlot(handSlot);
+  const blockers = entries.filter((entry) => {
+    if (entry.entityId !== entityId || entry.id === ignoreEntryId) return false;
+    const candidateSlot = entryHandSlot(entry);
+    return candidateSlot ? handsOccupiedBySlot(candidateSlot).some((hand) => occupiedHands.includes(hand)) : false;
+  });
+  return blockers.length ? { ok: false, blockers } : { ok: true };
+}
+
+export function handSlotForLocation(location: InventoryLocation, handSlot: HandSlot | null | undefined): HandSlot | null {
+  return isInventoryLocation(location) && location.kind === "equipped" ? handSlot ?? null : null;
 }
 
 export function movementForSlots(slots: number) {
@@ -189,7 +321,7 @@ export function turnsRemaining(entry: InventoryEntry, item: ItemTemplate): numbe
 
 export function isActiveLight(entry: InventoryEntry, catalogs: Catalogs): boolean {
   const item = entryItem(entry, catalogs);
-  if (!item.emitsLight || entry.state?.isLit !== true) return false;
+  if (!item.emitsLight || entry.state?.isLit !== true || !isInUseHandEntry(entry)) return false;
   const remaining = turnsRemaining(entry, item);
   return remaining === null || remaining > 0;
 }
@@ -200,16 +332,13 @@ export function armorClass(entity: Entity, entries: InventoryEntry[], catalogs: 
   const entityEntries = entries.filter((entry) => entry.entityId === entity.id);
   const equippedArmor = entityEntries
     .map((entry) => ({ entry, item: entryItem(entry, catalogs) }))
-    .filter(({ entry, item }) => entry.location === "equipped" && item.armor?.armorType === "armor")
+    .filter(({ entry, item }) => isInventoryLocation(entry.location) && entry.location.kind === "equipped" && item.armor?.armorType === "armor")
     .sort((a, b) => (b.item.armor?.baseAcAscending ?? 10) - (a.item.armor?.baseAcAscending ?? 10))[0];
   const base = equippedArmor?.item.armor?.baseAcAscending ?? 10;
   const armorMagic = equippedArmor?.item.armor?.magicAcBonus ?? 0;
   const shieldBonus = entityEntries
     .map((entry) => ({ entry, item: entryItem(entry, catalogs) }))
-    .filter(
-      ({ entry, item }) =>
-        ["equipped", "in_hand"].includes(entry.location) && item.armor?.armorType === "shield"
-    )
+    .filter(({ entry, item }) => isInUseHandEntry(entry) && item.armor?.armorType === "shield")
     .reduce((total, { item }) => total + (item.armor?.acBonus ?? 0) + (item.armor?.magicAcBonus ?? 0), 0);
   return base + armorMagic + shieldBonus + dex;
 }
@@ -235,10 +364,12 @@ export function classRestrictionWarnings(
 
   const warnings: RestrictionWarning[] = [];
   for (const entry of entries.filter((candidate) => candidate.entityId === entity.id)) {
-    if (!["equipped", "in_hand"].includes(entry.location)) continue;
     const item = entryItem(entry, catalogs);
     const category = armorCategory(item);
     if (!category) continue;
+    if (category === "shield" && !isInUseHandEntry(entry)) continue;
+    if (category !== "shield" && (!isInventoryLocation(entry.location) || entry.location.kind !== "equipped")) continue;
+
     const allowed =
       category === "shield"
         ? armor.shields
@@ -267,8 +398,8 @@ export function summarizeEntity(
 ): EntitySummary {
   const classDef = entity.classId ? catalogs.classesById[entity.classId] : undefined;
   const levelData = classLevelData(classDef, entity.xp);
-  const carriedSlots = entityCarriedSlots(entity.id, entries, catalogs);
-  const movement = movementForSlots(carriedSlots);
+  const load = entityLoadBreakdown(entity.id, entries, catalogs);
+  const movement = movementForSlots(load.carriedSlots);
   const entityEntries = entries.filter((entry) => entry.entityId === entity.id);
   const activeLights = entityEntries.filter((entry) => isActiveLight(entry, catalogs)).map((entry) => {
     const item = entryItem(entry, catalogs);
@@ -289,6 +420,32 @@ export function summarizeEntity(
       message: `${node.item.name} is over capacity (${node.usedSlots}/${node.capacitySlots} slots).`
     });
   }
+
+  const hands = entityHandOccupancy(entity.id, entries);
+  for (const [slot, occupants] of Object.entries(hands)) {
+    if (occupants.length > 1) {
+      warnings.push({
+        severity: "warning",
+        source: "houseRule",
+        message: `${entity.name} has too many items assigned to ${slot.replace("_", " ")}.`
+      });
+    }
+  }
+
+  for (const entry of entityEntries.filter((candidate) => isInventoryLocation(candidate.location) && candidate.location.kind === "equipped")) {
+    const item = entryItem(entry, catalogs);
+    const handsRequired = item.handsRequired ?? 0;
+    const handsAssigned = entry.handSlot ? handsOccupiedBySlot(entry.handSlot).length : 0;
+    if (handsRequired > handsAssigned) {
+      warnings.push({
+        severity: "warning",
+        source: "houseRule",
+        affectedItemId: entry.id,
+        message: `${displayName(entry, catalogs, mode)} requires ${handsRequired} hand${handsRequired === 1 ? "" : "s"} but is assigned ${handsAssigned}.`
+      });
+    }
+  }
+
   if (movement.overloaded) {
     warnings.push({
       severity: "warning",
@@ -311,6 +468,8 @@ export function summarizeEntity(
     armorClass: armorClass(entity, entries, catalogs),
     attackModifier: levelData?.attack_modifier,
     savingThrows: levelData?.saving_throws,
+    equippedSlots: load.equippedSlots,
+    stowedSlots: load.stowedSlots,
     ...movement,
     activeLights,
     warnings
@@ -346,10 +505,6 @@ export function splitInventoryEntry(entry: InventoryEntry, splitQuantity: number
       updatedAt: new Date().toISOString()
     }
   ];
-}
-
-export function validTransferLocation(parentEntryId: string | null | undefined): InventoryLocation {
-  return parentEntryId ? "container" : "carried_loose";
 }
 
 function createMissingItem(id: string): ItemTemplate {

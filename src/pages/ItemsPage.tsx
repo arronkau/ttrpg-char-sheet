@@ -62,7 +62,15 @@ export function ItemsPage() {
                 <span>{item.gpValue ?? "—"} gp</span>
                 <button
                   className="icon-button"
-                  onClick={() => void addCatalogItem({ entityId, itemTemplateId: item.id, quantity: item.quantity || 1, location: "carried_loose" })}
+                  onClick={() =>
+                    void addCatalogItem({
+                      entityId,
+                      itemTemplateId: item.id,
+                      quantity: item.quantity || 1,
+                      location: { kind: "equipped" },
+                      handSlot: null
+                    })
+                  }
                   title="Add item"
                 >
                   <Plus size={16} />

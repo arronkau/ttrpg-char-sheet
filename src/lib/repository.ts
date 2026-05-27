@@ -3,13 +3,17 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   setDoc,
   writeBatch,
+  type Firestore,
   type Unsubscribe
 } from "firebase/firestore";
 import type { Campaign, Entity, InventoryEntry } from "../types";
+import { catalogs } from "./catalogs";
 import { getFirebaseServices, signInAnonymouslyIfNeeded } from "./firebase";
+import { collectInventoryDescendantIds, isCurrentCampaignSnapshot } from "./inventoryIntegrity";
 import { createStarterCampaign, nowIso, type CampaignSnapshot } from "./seed";
 
 export type RepositoryKind = "firestore" | "local";
@@ -44,16 +48,23 @@ function createFirestoreRepository(): CampaignRepository {
     async ensureCampaign(snapshot) {
       const campaignRef = doc(db, "campaigns", snapshot.campaign.id);
       const existing = await getDoc(campaignRef);
-      if (existing.exists()) return;
-      const batch = writeBatch(db);
-      batch.set(campaignRef, snapshot.campaign);
-      snapshot.entities.forEach((entity) =>
-        batch.set(doc(db, "campaigns", snapshot.campaign.id, "entities", entity.id), entity)
-      );
-      snapshot.inventoryEntries.forEach((entry) =>
-        batch.set(doc(db, "campaigns", snapshot.campaign.id, "inventoryEntries", entry.id), entry)
-      );
-      await batch.commit();
+      if (!existing.exists()) {
+        await replaceFirestoreSnapshot(db, snapshot);
+        return;
+      }
+
+      const [entityDocs, inventoryDocs] = await Promise.all([
+        getDocs(collection(db, "campaigns", snapshot.campaign.id, "entities")),
+        getDocs(collection(db, "campaigns", snapshot.campaign.id, "inventoryEntries"))
+      ]);
+      const existingSnapshot = {
+        campaign: { id: existing.id, ...existing.data() },
+        entities: entityDocs.docs.map((document) => ({ id: document.id, ...document.data() })),
+        inventoryEntries: inventoryDocs.docs.map((document) => ({ id: document.id, ...document.data() }))
+      };
+      if (!isCurrentCampaignSnapshot(existingSnapshot, catalogs)) {
+        await replaceFirestoreSnapshot(db, snapshot, true);
+      }
     },
     subscribeCampaign(campaignId, onChange) {
       let campaign: Campaign | null = null;
@@ -84,20 +95,18 @@ function createFirestoreRepository(): CampaignRepository {
       };
     },
     async saveCampaign(campaign) {
-      await setDoc(doc(db, "campaigns", campaign.id), { ...campaign, updatedAt: nowIso() }, { merge: true });
+      await setDoc(doc(db, "campaigns", campaign.id), { ...campaign, updatedAt: nowIso() });
     },
     async saveEntity(campaignId, entity) {
       await setDoc(
         doc(db, "campaigns", campaignId, "entities", entity.id),
-        { ...entity, updatedAt: nowIso() },
-        { merge: true }
+        { ...entity, updatedAt: nowIso() }
       );
     },
     async saveInventoryEntry(campaignId, entry) {
       await setDoc(
         doc(db, "campaigns", campaignId, "inventoryEntries", entry.id),
-        { ...entry, updatedAt: nowIso() },
-        { merge: true }
+        { ...entry, updatedAt: nowIso() }
       );
     },
     async saveInventoryEntries(campaignId, entries) {
@@ -105,8 +114,7 @@ function createFirestoreRepository(): CampaignRepository {
       entries.forEach((entry) => {
         batch.set(
           doc(db, "campaigns", campaignId, "inventoryEntries", entry.id),
-          { ...entry, updatedAt: nowIso() },
-          { merge: true }
+          { ...entry, updatedAt: nowIso() }
         );
       });
       await batch.commit();
@@ -123,7 +131,12 @@ function createLocalRepository(): CampaignRepository {
   const read = (campaignId: string): CampaignSnapshot => {
     const raw = typeof localStorage === "undefined" ? null : localStorage.getItem(storageKey(campaignId));
     if (!raw) return createStarterCampaign(campaignId);
-    return JSON.parse(raw) as CampaignSnapshot;
+    try {
+      const snapshot = JSON.parse(raw) as unknown;
+      return isCurrentCampaignSnapshot(snapshot, catalogs) ? snapshot : createStarterCampaign(campaignId);
+    } catch {
+      return createStarterCampaign(campaignId);
+    }
   };
 
   const write = (snapshot: CampaignSnapshot) => {
@@ -140,7 +153,21 @@ function createLocalRepository(): CampaignRepository {
     },
     async ensureCampaign(snapshot) {
       if (typeof localStorage === "undefined") return;
-      if (!localStorage.getItem(storageKey(snapshot.campaign.id))) write(snapshot);
+      const existing = localStorage.getItem(storageKey(snapshot.campaign.id));
+      if (!existing) {
+        write(snapshot);
+        return;
+      }
+      let existingSnapshot: unknown;
+      try {
+        existingSnapshot = JSON.parse(existing);
+      } catch {
+        write(snapshot);
+        return;
+      }
+      if (!isCurrentCampaignSnapshot(existingSnapshot, catalogs)) {
+        write(snapshot);
+      }
     },
     subscribeCampaign(campaignId, onChange) {
       const set = listeners.get(campaignId) ?? new Set<(snapshot: CampaignSnapshot) => void>();
@@ -191,7 +218,7 @@ function createLocalRepository(): CampaignRepository {
     },
     async deleteInventoryEntry(campaignId, entryId) {
       const snapshot = read(campaignId);
-      const idsToDelete = collectEntryAndChildren(entryId, snapshot.inventoryEntries);
+      const idsToDelete = collectInventoryDescendantIds(entryId, snapshot.inventoryEntries);
       write({
         ...snapshot,
         campaign: { ...snapshot.campaign, updatedAt: nowIso() },
@@ -207,21 +234,27 @@ function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
   return items.map((candidate) => (candidate.id === item.id ? item : candidate));
 }
 
-function collectEntryAndChildren(entryId: string, entries: InventoryEntry[]): Set<string> {
-  const ids = new Set([entryId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const entry of entries) {
-      if (entry.parentEntryId && ids.has(entry.parentEntryId) && !ids.has(entry.id)) {
-        ids.add(entry.id);
-        changed = true;
-      }
-    }
-  }
-  return ids;
-}
-
 function storageKey(campaignId: string): string {
   return `ttrpg-character-tracker:${campaignId}`;
+}
+
+async function replaceFirestoreSnapshot(db: Firestore, snapshot: CampaignSnapshot, clearExisting = false): Promise<void> {
+  const batch = writeBatch(db);
+  if (clearExisting) {
+    const [entityDocs, inventoryDocs] = await Promise.all([
+      getDocs(collection(db, "campaigns", snapshot.campaign.id, "entities")),
+      getDocs(collection(db, "campaigns", snapshot.campaign.id, "inventoryEntries"))
+    ]);
+    entityDocs.docs.forEach((document) => batch.delete(document.ref));
+    inventoryDocs.docs.forEach((document) => batch.delete(document.ref));
+  }
+
+  batch.set(doc(db, "campaigns", snapshot.campaign.id), snapshot.campaign);
+  snapshot.entities.forEach((entity) => {
+    batch.set(doc(db, "campaigns", snapshot.campaign.id, "entities", entity.id), entity);
+  });
+  snapshot.inventoryEntries.forEach((entry) => {
+    batch.set(doc(db, "campaigns", snapshot.campaign.id, "inventoryEntries", entry.id), entry);
+  });
+  await batch.commit();
 }

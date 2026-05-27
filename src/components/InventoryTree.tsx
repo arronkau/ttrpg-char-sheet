@@ -1,7 +1,9 @@
 import { ChevronRight, Flame, Package, Trash2 } from "lucide-react";
-import type { Entity, InventoryNode } from "../types";
+import type { Entity, InventoryLocation } from "../types";
+import type { InventoryNode } from "../types";
 import { useCampaignStore } from "../store/campaignStore";
 import { displayName, entrySlots, turnsRemaining } from "../lib/rules";
+import { isInventoryLocation } from "../lib/inventoryIntegrity";
 
 type InventoryTreeProps = {
   entity: Entity;
@@ -23,7 +25,7 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
   const catalogs = useCampaignStore((state) => state.catalogs);
   const viewMode = useCampaignStore((state) => state.viewMode);
   const entities = useCampaignStore((state) => state.entities);
-  const transferEntry = useCampaignStore((state) => state.transferEntry);
+  const moveInventoryEntry = useCampaignStore((state) => state.moveInventoryEntry);
   const splitEntry = useCampaignStore((state) => state.splitEntry);
   const toggleLight = useCampaignStore((state) => state.toggleLight);
   const deleteEntry = useCampaignStore((state) => state.deleteEntry);
@@ -40,7 +42,7 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
         <div className="tree-name">
           <strong>{displayName(node.entry, catalogs, viewMode)}</strong>
           <span>
-            {node.entry.quantity} x {item.type} · {entrySlots(node.entry, catalogs)} slots · {node.entry.location}
+            {node.entry.quantity} x {item.type} · {entrySlots(node.entry, catalogs)} slots · {locationLabel(node.entry.location)}
           </span>
         </div>
         {canHold && (
@@ -61,7 +63,14 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
         )}
         <select
           value={node.entry.entityId}
-          onChange={(event) => void transferEntry(node.entry.id, event.target.value, null)}
+          onChange={(event) =>
+            void moveInventoryEntry({
+              entryId: node.entry.id,
+              entityId: event.target.value,
+              location: { kind: "equipped" },
+              handSlot: null
+            })
+          }
           title="Transfer to entity"
         >
           {entities.map((candidate) => (
@@ -79,4 +88,8 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
       ))}
     </div>
   );
+}
+
+function locationLabel(location: InventoryLocation): string {
+  return isInventoryLocation(location) && location.kind === "contained" ? "inside" : "equipped";
 }

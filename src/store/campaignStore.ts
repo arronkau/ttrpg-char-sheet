@@ -4,20 +4,25 @@ import type {
   Catalogs,
   Entity,
   EntitySummary,
+  HandSlot,
+  InventoryActionResult,
   InventoryEntry,
   InventoryLocation,
   ItemTemplate,
   ViewMode
 } from "../types";
 import { catalogs as staticCatalogs } from "../lib/catalogs";
+import { collectInventoryDescendantIds, validateInventoryPlacement } from "../lib/inventoryIntegrity";
 import { createRepository, type CampaignRepository, type RepositoryKind } from "../lib/repository";
 import { createStarterCampaign, createTreasureItem, makeCampaignId, nowIso } from "../lib/seed";
 import {
   entryItem,
+  displayName,
+  handSlotForLocation,
   splitInventoryEntry,
   spendLightTurnPatch,
   summarizeEntity,
-  validTransferLocation
+  validateHandAssignment
 } from "../lib/rules";
 
 type CampaignState = {
@@ -41,8 +46,8 @@ type CampaignState = {
     itemTemplateId: string;
     quantity: number;
     location: InventoryLocation;
-    parentEntryId?: string | null;
-  }) => Promise<void>;
+    handSlot?: HandSlot | null;
+  }) => Promise<InventoryActionResult>;
   addCustomTreasure: (input: {
     entityId: string;
     name: string;
@@ -50,9 +55,16 @@ type CampaignState = {
     gpValue: number | null;
     slotsPerUnit: number;
     quantity: number;
-  }) => Promise<void>;
+    location: InventoryLocation;
+    handSlot?: HandSlot | null;
+  }) => Promise<InventoryActionResult>;
   updateInventoryEntry: (entry: InventoryEntry) => Promise<void>;
-  transferEntry: (entryId: string, entityId: string, parentEntryId?: string | null) => Promise<void>;
+  moveInventoryEntry: (input: {
+    entryId: string;
+    entityId: string;
+    location: InventoryLocation;
+    handSlot?: HandSlot | null;
+  }) => Promise<InventoryActionResult>;
   splitEntry: (entryId: string, quantity: number) => Promise<void>;
   toggleLight: (entryId: string) => Promise<void>;
   spendTurn: () => Promise<void>;
@@ -142,14 +154,19 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       createdAt: timestamp,
       updatedAt: timestamp
     };
-    const nextCampaign = { ...campaign, activeEntityIds: [...campaign.activeEntityIds, entity.id], updatedAt: timestamp };
+    const nextCampaign = { ...campaign, updatedAt: timestamp };
     set((state) => ({ entities: [...state.entities, entity], campaign: nextCampaign }));
     await Promise.all([repository.saveEntity(campaignId, entity), repository.saveCampaign(nextCampaign)]);
   },
 
-  async addCatalogItem({ entityId, itemTemplateId, quantity, location, parentEntryId = null }) {
-    const { campaignId, catalogs } = get();
-    if (!campaignId || !repository) return;
+  async addCatalogItem({ entityId, itemTemplateId, quantity, location, handSlot = null }) {
+    const { campaignId, catalogs, inventoryEntries, viewMode } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    if (!placementValidation.ok) return placementValidation;
+    const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const template = catalogs.itemsById[itemTemplateId];
     const timestamp = nowIso();
     const entry: InventoryEntry = {
@@ -158,18 +175,24 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       itemTemplateId,
       quantity: Math.max(1, Math.floor(quantity)),
       location,
-      parentEntryId,
+      handSlot: normalizedHandSlot,
       state: initialStateForTemplate(template),
       createdAt: timestamp,
       updatedAt: timestamp
     };
     set((state) => ({ inventoryEntries: [...state.inventoryEntries, entry] }));
     await repository.saveInventoryEntry(campaignId, entry);
+    return { ok: true };
   },
 
-  async addCustomTreasure({ entityId, name, description, gpValue, slotsPerUnit, quantity }) {
-    const { campaignId } = get();
-    if (!campaignId || !repository) return;
+  async addCustomTreasure({ entityId, name, description, gpValue, slotsPerUnit, quantity, location, handSlot = null }) {
+    const { campaignId, catalogs, inventoryEntries, viewMode } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    if (!placementValidation.ok) return placementValidation;
+    const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const timestamp = nowIso();
     const item = createTreasureItem(crypto.randomUUID(), name, description, gpValue, slotsPerUnit);
     const entry: InventoryEntry = {
@@ -177,13 +200,14 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       entityId,
       customItem: item,
       quantity: Math.max(1, Math.floor(quantity)),
-      location: "carried_loose",
-      parentEntryId: null,
+      location,
+      handSlot: normalizedHandSlot,
       createdAt: timestamp,
       updatedAt: timestamp
     };
     set((state) => ({ inventoryEntries: [...state.inventoryEntries, entry] }));
     await repository.saveInventoryEntry(campaignId, entry);
+    return { ok: true };
   },
 
   async updateInventoryEntry(entry) {
@@ -194,24 +218,35 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     await repository.saveInventoryEntry(campaignId, nextEntry);
   },
 
-  async transferEntry(entryId, entityId, parentEntryId = null) {
-    const { campaignId, inventoryEntries } = get();
-    if (!campaignId || !repository) return;
+  async moveInventoryEntry({ entryId, entityId, location, handSlot = null }) {
+    const { campaignId, inventoryEntries, catalogs, viewMode } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
     const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
-    if (!entry) return;
+    if (!entry) return { ok: false, message: "Item no longer exists." };
+    const placementValidation = validateInventoryPlacement({ entryId, entityId, location, entries: inventoryEntries, catalogs });
+    if (!placementValidation.ok) return placementValidation;
+    const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    const timestamp = nowIso();
     const nextEntry: InventoryEntry = {
       ...entry,
       entityId,
-      parentEntryId,
-      location: validTransferLocation(parentEntryId),
-      updatedAt: nowIso()
+      location,
+      handSlot: normalizedHandSlot,
+      updatedAt: timestamp
     };
-    const descendantIds = collectEntryAndChildren(entryId, inventoryEntries);
+    const descendantIds = collectInventoryDescendantIds(entryId, inventoryEntries);
     const movedEntries = inventoryEntries
       .filter((candidate) => descendantIds.has(candidate.id))
-      .map((candidate) => (candidate.id === nextEntry.id ? nextEntry : { ...candidate, entityId, updatedAt: nowIso() }));
+      .map((candidate) =>
+        candidate.id === nextEntry.id
+          ? nextEntry
+          : { ...candidate, entityId, handSlot: null, updatedAt: timestamp }
+      );
     set((state) => ({ inventoryEntries: state.inventoryEntries.map((candidate) => movedEntries.find((moved) => moved.id === candidate.id) ?? candidate) }));
     await repository.saveInventoryEntries(campaignId, movedEntries);
+    return { ok: true };
   },
 
   async splitEntry(entryId, quantity) {
@@ -220,8 +255,11 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
     if (!entry || entry.quantity <= 1) return;
     const [original, split] = splitInventoryEntry(entry, quantity);
-    set((state) => ({ inventoryEntries: [...upsertById(state.inventoryEntries, original), split] }));
-    await repository.saveInventoryEntries(campaignId, [original, split]);
+    const timestamp = nowIso();
+    const nextOriginal = { ...original, updatedAt: timestamp };
+    const nextSplit = { ...split, handSlot: null, updatedAt: timestamp };
+    set((state) => ({ inventoryEntries: [...upsertById(state.inventoryEntries, nextOriginal), nextSplit] }));
+    await repository.saveInventoryEntries(campaignId, [nextOriginal, nextSplit]);
   },
 
   async toggleLight(entryId) {
@@ -258,9 +296,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   async deleteEntry(entryId) {
     const { campaignId, inventoryEntries } = get();
     if (!campaignId || !repository) return;
-    const idsToDelete = collectEntryAndChildren(entryId, inventoryEntries);
+    const repo = repository;
+    const idsToDelete = collectInventoryDescendantIds(entryId, inventoryEntries);
     set((state) => ({ inventoryEntries: state.inventoryEntries.filter((entry) => !idsToDelete.has(entry.id)) }));
-    await repository.deleteInventoryEntry(campaignId, entryId);
+    await Promise.all([...idsToDelete].map((id) => repo.deleteInventoryEntry(campaignId, id)));
   },
 
   summaries() {
@@ -287,17 +326,10 @@ function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
   return items.map((candidate) => (candidate.id === item.id ? item : candidate));
 }
 
-function collectEntryAndChildren(entryId: string, entries: InventoryEntry[]): Set<string> {
-  const ids = new Set([entryId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const entry of entries) {
-      if (entry.parentEntryId && ids.has(entry.parentEntryId) && !ids.has(entry.id)) {
-        ids.add(entry.id);
-        changed = true;
-      }
-    }
-  }
-  return ids;
+function blockedHandResult(entries: InventoryEntry[], catalogs: Catalogs, viewMode: ViewMode): InventoryActionResult {
+  const itemNames = entries.map((entry) => displayName(entry, catalogs, viewMode)).join(", ");
+  return {
+    ok: false,
+    message: `That hand is already occupied by ${itemNames}.`
+  };
 }
