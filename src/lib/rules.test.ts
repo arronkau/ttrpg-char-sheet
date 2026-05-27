@@ -6,14 +6,19 @@ import {
   armorClass,
   buildInventoryTree,
   classRestrictionWarnings,
+  coinBreakdownForEntry,
+  coinTotal,
   entityHandOccupancy,
   entityLoadBreakdown,
+  entryItem,
   entrySlots,
   handSlotForLocation,
   isActiveLight,
+  isZeroSlotTreasureEntry,
   levelForXp,
   movementForSlots,
   splitInventoryEntry,
+  spendLightTurn,
   spendLightTurnPatch,
   stackSlots,
   summarizeEntity,
@@ -39,6 +44,28 @@ describe("slot and encumbrance rules", () => {
     expect(entrySlots(entry, catalogs)).toBe(1);
   });
 
+  it("keeps template-linked entries readable without snapshot migration", () => {
+    const entry = inventory("torch", "entity", "item_torch_056", 3, { kind: "equipped" });
+    expect(entryItem(entry, catalogs).name).toBe("Torch");
+    expect(entrySlots(entry, catalogs)).toBe(1);
+  });
+
+  it("calculates coin slots from explicit denominations and legacy coin stacks", () => {
+    const explicitCoins = customInventory("coins", "entity", createTreasureItem("coins", "Coins", "Loose coins", 1, 1), 999, {
+      kind: "contained",
+      parentEntryId: "pouch"
+    });
+    explicitCoins.state = { coins: { pp: 2, gp: 50, sp: 30, cp: 20 } };
+    const legacyCoins = customInventory("legacy-coins", "entity", createTreasureItem("legacy-coins", "Coins", "Old coins", 1, 1), 35, {
+      kind: "contained",
+      parentEntryId: "pouch"
+    });
+
+    expect(coinTotal(coinBreakdownForEntry(explicitCoins, catalogs)!)).toBe(102);
+    expect(entrySlots(explicitCoins, catalogs)).toBe(2);
+    expect(coinBreakdownForEntry(legacyCoins, catalogs)).toEqual({ pp: 0, gp: 35, sp: 0, cp: 0 });
+  });
+
   it("maps carried slots to movement thresholds", () => {
     expect(movementForSlots(5).movementExploration).toBe(120);
     expect(movementForSlots(6).movementEncounter).toBe(30);
@@ -58,6 +85,29 @@ describe("inventory tree behavior", () => {
     expect(pouch?.usedSlots).toBe(2);
     expect(pouch?.overCapacity).toBe(true);
     expect(tree.byEntityId.entity).toHaveLength(1);
+  });
+
+  it("tracks coin purse capacity separately from 0-slot treasure", () => {
+    const coins = customInventory("coins", "entity", createTreasureItem("coins", "Coins", "Loose coins", 1, 1), 101, {
+      kind: "contained",
+      parentEntryId: "pouch"
+    });
+    coins.state = { coins: { pp: 1, gp: 100, sp: 0, cp: 0 } };
+    const gem = customInventory("gem", "entity", createTreasureItem("gem", "Ruby", "Small cut ruby", 500, 0), 1, {
+      kind: "contained",
+      parentEntryId: "pouch"
+    });
+    const entries = [inventory("pouch", "entity", "item_belt_pouch_005", 1, { kind: "equipped" }), coins, gem];
+
+    const tree = buildInventoryTree(entries, catalogs);
+    const pouch = tree.allNodes.find((node) => node.entry.id === "pouch");
+
+    expect(pouch?.coinCapacity).toBe(100);
+    expect(pouch?.usedCoins).toBe(101);
+    expect(pouch?.overCoinCapacity).toBe(true);
+    expect(pouch?.usedSlots).toBe(0);
+    expect(pouch?.overCapacity).toBe(false);
+    expect(isZeroSlotTreasureEntry(gem, catalogs)).toBe(true);
   });
 
   it("renders impossible containment cycles as roots instead of recursing forever", () => {
@@ -127,6 +177,20 @@ describe("location load behavior", () => {
     expect("droppedSlots" in summary).toBe(false);
     expect(summary.movementExploration).toBe(120);
   });
+
+  it("warns when a coin purse carries more than 100 coins", () => {
+    const entity = character("fighter", "fighter", 10);
+    const coins = customInventory("coins", entity.id, createTreasureItem("coins", "Coins", "Loose coins", 1, 1), 101, {
+      kind: "contained",
+      parentEntryId: "pouch"
+    });
+    coins.state = { coins: { pp: 0, gp: 100, sp: 1, cp: 0 } };
+    const entries = [inventory("pouch", entity.id, "item_belt_pouch_005", 1, { kind: "equipped" }), coins];
+
+    const summary = summarizeEntity(entity, entries, catalogs, "gm");
+
+    expect(summary.warnings.some((warning) => warning.message.includes("101/100 coins"))).toBe(true);
+  });
 });
 
 describe("hand behavior", () => {
@@ -155,11 +219,18 @@ describe("hand behavior", () => {
     expect(handSlotForLocation({ kind: "equipped" }, "left_hand")).toBe("left_hand");
   });
 
-  it("warns when equipped items require more hands than assigned", () => {
+  it("does not warn when equipped hand-use items are ready but not held", () => {
     const entity = character("fighter", "fighter", 10);
     const entries = [inventory("sack", entity.id, "item_sack_048", 1, { kind: "equipped" })];
     const summary = summarizeEntity(entity, entries, catalogs, "gm");
-    expect(summary.warnings.some((warning) => warning.message.includes("requires 1 hand"))).toBe(true);
+    expect(summary.warnings.some((warning) => warning.message.includes("requires 1 hand"))).toBe(false);
+  });
+
+  it("warns when a held stack needs more hands than its assigned hand slot provides", () => {
+    const entity = character("fighter", "fighter", 10);
+    const entries = [inventory("torch-stack", entity.id, "item_torch_056", 2, { kind: "equipped" }, "left_hand")];
+    const summary = summarizeEntity(entity, entries, catalogs, "gm");
+    expect(summary.warnings.some((warning) => warning.message.includes("stack needs 2 hands"))).toBe(true);
   });
 });
 
@@ -232,9 +303,65 @@ describe("light tracking", () => {
     handTorch.state = { isLit: true, durationTurnsUsed: 5, durationTurnsMax: 6 };
     expect(isActiveLight(handTorch, catalogs)).toBe(true);
     expect(turnsRemaining(handTorch, catalogs.itemsById["item_torch_056"])).toBe(1);
-    const next = spendLightTurnPatch(handTorch, catalogs);
-    expect(next?.state?.isLit).toBe(false);
-    expect(next?.state?.durationTurnsUsed).toBe(6);
+    const result = spendLightTurn(handTorch, catalogs);
+    expect(result?.disposition).toBe("consumed");
+    expect(result?.entry.state?.durationTurnsUsed).toBe(6);
+  });
+
+  it("burns lit timed items even when they are not held in hand", () => {
+    const packedTorch = inventory("packed-torch", "entity", "item_torch_056", 1, { kind: "equipped" });
+    packedTorch.state = { isLit: true, durationTurnsUsed: 2, durationTurnsMax: 6 };
+
+    expect(isActiveLight(packedTorch, catalogs)).toBe(false);
+    const next = spendLightTurnPatch(packedTorch, catalogs);
+    expect(next?.state?.isLit).toBe(true);
+    expect(next?.state?.durationTurnsUsed).toBe(3);
+  });
+
+  it("marks non-consumed lights depleted when their duration runs out", () => {
+    const lantern = inventory("lantern", "entity", "item_lantern_031", 1, { kind: "equipped" }, "left_hand");
+    lantern.state = { isLit: true, durationTurnsUsed: 23, durationTurnsMax: 24 };
+
+    const result = spendLightTurn(lantern, catalogs);
+    expect(result?.disposition).toBe("updated");
+    expect(result?.entry.state?.isLit).toBe(false);
+    expect(result?.entry.state?.isDepleted).toBe(true);
+  });
+
+  it("uses custom light fields for active light tracking", () => {
+    const lantern = customInventory(
+      "lantern",
+      "entity",
+      customItem({
+        id: "custom-lantern",
+        name: "Blue lantern",
+        handsRequired: 1,
+        emitsLight: true,
+        lightRadiusFeet: 40,
+        gear: {
+          gearKind: "misc",
+          usesMax: null,
+          usesRemaining: null,
+          consumedOnUse: false,
+          durationTurnsMax: 8,
+          durationTurnsUsed: 0,
+          durationDescription: null,
+          containsSpells: false,
+          spellData: null,
+          language: null,
+          readable: null,
+          deciphered: null,
+          rulesNote: null
+        }
+      }),
+      1,
+      { kind: "equipped" },
+      "left_hand"
+    );
+    lantern.state = { isLit: true, durationTurnsUsed: 2, durationTurnsMax: 8 };
+
+    expect(isActiveLight(lantern, catalogs)).toBe(true);
+    expect(turnsRemaining(lantern, lantern.customItem!)).toBe(6);
   });
 });
 
@@ -250,6 +377,59 @@ describe("character derivations", () => {
       inventory("shield", entity.id, "item_shield_071", 1, { kind: "equipped" }, "left_hand")
     ];
     expect(armorClass(entity, entries, catalogs)).toBe(16);
+  });
+
+  it("uses custom armor, hand, and container fields in derived rules", () => {
+    const entity = character("fighter", "fighter", 10);
+    const entries = [
+      customInventory(
+        "brigandine",
+        entity.id,
+        customItem({
+          id: "custom-brigandine",
+          type: "armor",
+          name: "Brigandine",
+          slotsPerUnit: 2,
+          armor: { armorType: "armor", baseAcAscending: 14, acBonus: null, magicAcBonus: null }
+        }),
+        1,
+        { kind: "equipped" }
+      ),
+      customInventory(
+        "buckler",
+        entity.id,
+        customItem({
+          id: "custom-buckler",
+          type: "armor",
+          name: "Buckler",
+          armor: { armorType: "shield", baseAcAscending: null, acBonus: 2, magicAcBonus: null }
+        }),
+        1,
+        { kind: "equipped" },
+        "left_hand"
+      ),
+      customInventory(
+        "satchel",
+        entity.id,
+        customItem({
+          id: "custom-satchel",
+          type: "container",
+          name: "Satchel",
+          slotsPerUnit: 1,
+          container: { capacitySlots: 1, canBeStowed: true, slotsWhenStowed: 1, loadCategory: "stowed" }
+        }),
+        1,
+        { kind: "equipped" }
+      ),
+      inventory("chain", entity.id, "item_chainmail_068", 1, { kind: "contained", parentEntryId: "satchel" })
+    ];
+
+    const tree = buildInventoryTree(entries, catalogs);
+    const satchel = tree.allNodes.find((node) => node.entry.id === "satchel");
+
+    expect(armorClass(entity, entries, catalogs)).toBe(16);
+    expect(satchel?.capacitySlots).toBe(1);
+    expect(satchel?.overCapacity).toBe(true);
   });
 
   it("does not grant shield AC when the shield is equipped but not in hand", () => {
@@ -328,6 +508,26 @@ function customInventory(
     handSlot,
     createdAt: timestamp,
     updatedAt: timestamp
+  };
+}
+
+function customItem(overrides: Partial<ItemTemplate>): ItemTemplate {
+  return {
+    id: "custom-item",
+    type: "gear",
+    identified: true,
+    name: "Custom item",
+    description: "",
+    quantity: 1,
+    slotsPerUnit: 0,
+    stackSize: null,
+    handsRequired: 0,
+    emitsLight: false,
+    lightRadiusFeet: null,
+    cursed: false,
+    curseDescription: null,
+    gpValue: null,
+    ...overrides
   };
 }
 

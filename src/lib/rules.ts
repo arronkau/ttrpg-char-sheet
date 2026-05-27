@@ -1,6 +1,7 @@
 import type {
   Catalogs,
   ClassDefinition,
+  CoinBreakdown,
   ContainerLoadCategory,
   Entity,
   EntitySummary,
@@ -31,6 +32,8 @@ const ENCUMBRANCE_THRESHOLDS = [
   { max: 20, movementExploration: 30, movementEncounter: 10, label: "Burdened" }
 ];
 
+const COIN_DENOMINATIONS: Array<keyof CoinBreakdown> = ["pp", "gp", "sp", "cp"];
+
 export type EntityLoadBreakdown = {
   equippedSlots: number;
   stowedSlots: number;
@@ -40,6 +43,17 @@ export type EntityLoadBreakdown = {
 export type HandValidationResult =
   | { ok: true }
   | { ok: false; blockers: InventoryEntry[] };
+
+export type InventoryConsumptionEvent = {
+  type: "itemConsumed" | "itemDepleted";
+  entryId: string;
+  itemName: string;
+  reason: "duration";
+};
+
+export type LightTurnSpendResult =
+  | { disposition: "updated"; entry: InventoryEntry; event?: InventoryConsumptionEvent }
+  | { disposition: "consumed"; entry: InventoryEntry; event: InventoryConsumptionEvent };
 
 export function abilityModifier(score: number | undefined): number {
   const value = score ?? 10;
@@ -107,6 +121,42 @@ export function stackSlots(quantity: number, slotsPerUnit: number, stackSize?: n
   return quantity * slotsPerUnit;
 }
 
+export function normalizeCoins(coins: Partial<CoinBreakdown> | null | undefined): CoinBreakdown {
+  return {
+    pp: normalizeCoinCount(coins?.pp),
+    gp: normalizeCoinCount(coins?.gp),
+    sp: normalizeCoinCount(coins?.sp),
+    cp: normalizeCoinCount(coins?.cp)
+  };
+}
+
+export function coinTotal(coins: CoinBreakdown): number {
+  return COIN_DENOMINATIONS.reduce((total, denomination) => total + coins[denomination], 0);
+}
+
+export function coinBreakdownForEntry(entry: InventoryEntry, catalogs: Catalogs): CoinBreakdown | null {
+  if (entry.state?.coins) return normalizeCoins(entry.state.coins);
+  if (!isLegacyCoinEntry(entry, catalogs)) return null;
+  return { pp: 0, gp: normalizeCoinCount(entry.quantity), sp: 0, cp: 0 };
+}
+
+export function isCoinEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
+  return coinBreakdownForEntry(entry, catalogs) !== null;
+}
+
+export function isCoinPurseItem(item: ItemTemplate): boolean {
+  return item.type === "container" && item.container?.coinCapacity !== undefined;
+}
+
+export function isCoinPurseEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
+  return isCoinPurseItem(entryItem(entry, catalogs));
+}
+
+export function isZeroSlotTreasureEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
+  const item = entryItem(entry, catalogs);
+  return item.type === "treasure" && !isCoinEntry(entry, catalogs) && entrySlots(entry, catalogs) === 0;
+}
+
 export function parentEntryId(entry: InventoryEntry): string | null {
   return inventoryParentEntryId(entry);
 }
@@ -125,10 +175,12 @@ export function isInUseHandEntry(entry: InventoryEntry): boolean {
 
 export function entrySlots(entry: InventoryEntry, catalogs: Catalogs): number {
   const item = entryItem(entry, catalogs);
+  const coins = coinBreakdownForEntry(entry, catalogs);
+  const quantity = coins ? coinTotal(coins) : entry.quantity;
   if (parentEntryId(entry) && item.container?.slotsWhenStowed !== undefined) {
-    return stackSlots(entry.quantity, item.container.slotsWhenStowed, item.stackSize);
+    return stackSlots(quantity, item.container.slotsWhenStowed, item.stackSize);
   }
-  return stackSlots(entry.quantity, item.slotsPerUnit, item.stackSize);
+  return stackSlots(quantity, item.slotsPerUnit, item.stackSize);
 }
 
 export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs): InventoryTree {
@@ -141,7 +193,10 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
       children: [],
       usedSlots: 0,
       capacitySlots: item.container?.capacitySlots,
-      overCapacity: false
+      overCapacity: false,
+      usedCoins: 0,
+      coinCapacity: item.container?.coinCapacity,
+      overCoinCapacity: false
     };
     nodeById.set(entry.id, node);
     return node;
@@ -183,9 +238,18 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
   const computeUsedSlots = (node: InventoryNode, seenIds = new Set<string>()): void => {
     if (seenIds.has(node.entry.id)) return;
     const nextSeenIds = new Set([...seenIds, node.entry.id]);
-    const childSlots = node.children.reduce((total, child) => total + entrySlots(child.entry, catalogs), 0);
+    const childSlots = node.children.reduce((total, child) => {
+      if (node.coinCapacity !== undefined && isCoinEntry(child.entry, catalogs)) return total;
+      return total + entrySlots(child.entry, catalogs);
+    }, 0);
+    const childCoins = node.children.reduce((total, child) => {
+      const coins = coinBreakdownForEntry(child.entry, catalogs);
+      return coins ? total + coinTotal(coins) : total;
+    }, 0);
     node.usedSlots = childSlots;
     node.overCapacity = node.capacitySlots !== undefined && childSlots > node.capacitySlots;
+    node.usedCoins = childCoins;
+    node.overCoinCapacity = node.coinCapacity !== undefined && childCoins > node.coinCapacity;
     node.children.forEach((child) => computeUsedSlots(child, nextSeenIds));
   };
   allNodes.forEach((node) => computeUsedSlots(node));
@@ -321,7 +385,7 @@ export function turnsRemaining(entry: InventoryEntry, item: ItemTemplate): numbe
 
 export function isActiveLight(entry: InventoryEntry, catalogs: Catalogs): boolean {
   const item = entryItem(entry, catalogs);
-  if (!item.emitsLight || entry.state?.isLit !== true || !isInUseHandEntry(entry)) return false;
+  if (!item.emitsLight || entry.state?.isLit !== true || entry.state?.isDepleted || !isInUseHandEntry(entry)) return false;
   const remaining = turnsRemaining(entry, item);
   return remaining === null || remaining > 0;
 }
@@ -420,6 +484,14 @@ export function summarizeEntity(
       message: `${node.item.name} is over capacity (${node.usedSlots}/${node.capacitySlots} slots).`
     });
   }
+  for (const node of tree.allNodes.filter((candidate) => candidate.overCoinCapacity)) {
+    warnings.push({
+      severity: "warning",
+      source: "houseRule",
+      affectedItemId: node.entry.id,
+      message: `${node.item.name} holds too many coins (${node.usedCoins}/${node.coinCapacity} coins).`
+    });
+  }
 
   const hands = entityHandOccupancy(entity.id, entries);
   for (const [slot, occupants] of Object.entries(hands)) {
@@ -432,16 +504,17 @@ export function summarizeEntity(
     }
   }
 
-  for (const entry of entityEntries.filter((candidate) => isInventoryLocation(candidate.location) && candidate.location.kind === "equipped")) {
+  for (const entry of entityEntries.filter((candidate) => isInUseHandEntry(candidate))) {
     const item = entryItem(entry, catalogs);
     const handsRequired = item.handsRequired ?? 0;
     const handsAssigned = entry.handSlot ? handsOccupiedBySlot(entry.handSlot).length : 0;
-    if (handsRequired > handsAssigned) {
+    const handsNeeded = handsRequired * entry.quantity;
+    if (handsNeeded > handsAssigned) {
       warnings.push({
         severity: "warning",
         source: "houseRule",
         affectedItemId: entry.id,
-        message: `${displayName(entry, catalogs, mode)} requires ${handsRequired} hand${handsRequired === 1 ? "" : "s"} but is assigned ${handsAssigned}.`
+        message: `${displayName(entry, catalogs, mode)} stack needs ${handsNeeded} hands but is assigned ${handsAssigned}.`
       });
     }
   }
@@ -476,21 +549,42 @@ export function summarizeEntity(
   };
 }
 
-export function spendLightTurnPatch(entry: InventoryEntry, catalogs: Catalogs): InventoryEntry | null {
-  if (!isActiveLight(entry, catalogs)) return null;
+export function spendLightTurn(entry: InventoryEntry, catalogs: Catalogs): LightTurnSpendResult | null {
+  if (entry.state?.isLit !== true) return null;
   const item = entryItem(entry, catalogs);
   const { max, used } = durationTurns(entry, item);
   if (max === null) return null;
   const nextUsed = Math.min(max, used + 1);
-  return {
+  const nextEntry: InventoryEntry = {
     ...entry,
     state: {
       ...entry.state,
       isLit: nextUsed < max,
+      isDepleted: nextUsed >= max ? !item.gear?.consumedOnUse : false,
       durationTurnsUsed: nextUsed,
       durationTurnsMax: max
     }
   };
+  if (nextUsed >= max && item.gear?.consumedOnUse) {
+    return {
+      disposition: "consumed",
+      entry: nextEntry,
+      event: { type: "itemConsumed", entryId: entry.id, itemName: item.name, reason: "duration" }
+    };
+  }
+  if (nextUsed >= max) {
+    return {
+      disposition: "updated",
+      entry: nextEntry,
+      event: { type: "itemDepleted", entryId: entry.id, itemName: item.name, reason: "duration" }
+    };
+  }
+  return { disposition: "updated", entry: nextEntry };
+}
+
+export function spendLightTurnPatch(entry: InventoryEntry, catalogs: Catalogs): InventoryEntry | null {
+  const result = spendLightTurn(entry, catalogs);
+  return result?.disposition === "updated" ? result.entry : null;
 }
 
 export function splitInventoryEntry(entry: InventoryEntry, splitQuantity: number): [InventoryEntry, InventoryEntry] {
@@ -519,4 +613,15 @@ function createMissingItem(id: string): ItemTemplate {
     cursed: false,
     description: `No catalog item found for ${id}.`
   };
+}
+
+function isLegacyCoinEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
+  const item = entryItem(entry, catalogs);
+  const name = (entry.state?.customName ?? item.name).trim().toLowerCase();
+  return item.type === "treasure" && name === "coins";
+}
+
+function normalizeCoinCount(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
 }

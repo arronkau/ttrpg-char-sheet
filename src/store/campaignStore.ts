@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   Campaign,
   Catalogs,
+  CoinBreakdown,
   Entity,
   EntitySummary,
   HandSlot,
@@ -12,15 +13,19 @@ import type {
   ViewMode
 } from "../types";
 import { catalogs as staticCatalogs } from "../lib/catalogs";
-import { collectInventoryDescendantIds, validateInventoryPlacement } from "../lib/inventoryIntegrity";
+import { collectInventoryDescendantIds, isInventoryLocation, validateInventoryPlacement } from "../lib/inventoryIntegrity";
 import { createRepository, type CampaignRepository, type RepositoryKind } from "../lib/repository";
 import { createStarterCampaign, createTreasureItem, makeCampaignId, nowIso } from "../lib/seed";
 import {
-  entryItem,
+  coinTotal,
   displayName,
+  entryItem,
   handSlotForLocation,
+  isCoinEntry,
+  isCoinPurseEntry,
+  normalizeCoins,
   splitInventoryEntry,
-  spendLightTurnPatch,
+  spendLightTurn,
   summarizeEntity,
   validateHandAssignment
 } from "../lib/rules";
@@ -48,6 +53,13 @@ type CampaignState = {
     location: InventoryLocation;
     handSlot?: HandSlot | null;
   }) => Promise<InventoryActionResult>;
+  addCustomItem: (input: {
+    entityId: string;
+    item: ItemTemplate;
+    quantity: number;
+    location: InventoryLocation;
+    handSlot?: HandSlot | null;
+  }) => Promise<InventoryActionResult>;
   addCustomTreasure: (input: {
     entityId: string;
     name: string;
@@ -58,7 +70,20 @@ type CampaignState = {
     location: InventoryLocation;
     handSlot?: HandSlot | null;
   }) => Promise<InventoryActionResult>;
+  updateInventoryItem: (input: {
+    entryId: string;
+    entityId: string;
+    item: ItemTemplate;
+    quantity: number;
+    location: InventoryLocation;
+    handSlot?: HandSlot | null;
+  }) => Promise<InventoryActionResult>;
   updateInventoryEntry: (entry: InventoryEntry) => Promise<void>;
+  upsertCoinPurseCoins: (input: {
+    entityId: string;
+    purseEntryId: string;
+    coins: CoinBreakdown;
+  }) => Promise<InventoryActionResult>;
   moveInventoryEntry: (input: {
     entryId: string;
     entityId: string;
@@ -169,17 +194,75 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const template = catalogs.itemsById[itemTemplateId];
     const timestamp = nowIso();
+    const normalizedQuantity = normalizeQuantity(quantity);
+    const state = initialStateForTemplate(template);
+    if (normalizedHandSlot && shouldSplitQuantityForHandUse(normalizedQuantity, template, normalizedHandSlot)) {
+      const entries = createNewHeldUnitSplit({
+        entityId,
+        itemTemplateId,
+        quantity: normalizedQuantity,
+        location,
+        handSlot: normalizedHandSlot,
+        state,
+        timestamp
+      });
+      set((state) => ({ inventoryEntries: [...state.inventoryEntries, ...entries] }));
+      await repository.saveInventoryEntries(campaignId, entries);
+      return { ok: true };
+    }
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
       entityId,
       itemTemplateId,
-      quantity: Math.max(1, Math.floor(quantity)),
+      quantity: normalizedQuantity,
       location,
       handSlot: normalizedHandSlot,
-      state: initialStateForTemplate(template),
       createdAt: timestamp,
       updatedAt: timestamp
     };
+    if (state) entry.state = state;
+    set((state) => ({ inventoryEntries: [...state.inventoryEntries, entry] }));
+    await repository.saveInventoryEntry(campaignId, entry);
+    return { ok: true };
+  },
+
+  async addCustomItem({ entityId, item, quantity, location, handSlot = null }) {
+    const { campaignId, catalogs, inventoryEntries, viewMode } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    if (!placementValidation.ok) return placementValidation;
+    const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    const timestamp = nowIso();
+    const customItem = normalizeCustomItem(item, crypto.randomUUID());
+    const normalizedQuantity = normalizeQuantity(quantity);
+    const state = initialStateForTemplate(customItem);
+    if (normalizedHandSlot && shouldSplitQuantityForHandUse(normalizedQuantity, customItem, normalizedHandSlot)) {
+      const entries = createNewHeldUnitSplit({
+        entityId,
+        customItem,
+        quantity: normalizedQuantity,
+        location,
+        handSlot: normalizedHandSlot,
+        state,
+        timestamp
+      });
+      set((state) => ({ inventoryEntries: [...state.inventoryEntries, ...entries] }));
+      await repository.saveInventoryEntries(campaignId, entries);
+      return { ok: true };
+    }
+    const entry: InventoryEntry = {
+      id: crypto.randomUUID(),
+      entityId,
+      customItem,
+      quantity: normalizedQuantity,
+      location,
+      handSlot: normalizedHandSlot,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    if (state) entry.state = state;
     set((state) => ({ inventoryEntries: [...state.inventoryEntries, entry] }));
     await repository.saveInventoryEntry(campaignId, entry);
     return { ok: true };
@@ -210,12 +293,130 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     return { ok: true };
   },
 
+  async updateInventoryItem({ entryId, entityId, item, quantity, location, handSlot = null }) {
+    const { campaignId, catalogs, inventoryEntries, viewMode } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
+    if (!entry) return { ok: false, message: "Item no longer exists." };
+    const descendantIds = collectInventoryDescendantIds(entryId, inventoryEntries);
+    if (item.type !== "container" && descendantIds.size > 1) {
+      return { ok: false, message: "Move this container's contents out before changing it to another item type." };
+    }
+    const placementValidation = validateInventoryPlacement({ entryId, entityId, location, entries: inventoryEntries, catalogs });
+    if (!placementValidation.ok) return placementValidation;
+    const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    const timestamp = nowIso();
+    const customItem = normalizeCustomItem(item, entry.customItem?.id ?? crypto.randomUUID());
+    const { itemTemplateId: _itemTemplateId, ...entryWithoutTemplate } = entry;
+    const nextState = stateForItemUpdate(customItem, entry.state);
+    const normalizedQuantity = normalizeQuantity(quantity);
+    if (shouldSplitQuantityForHandUse(normalizedQuantity, customItem, normalizedHandSlot)) {
+      const nextOriginal: InventoryEntry = {
+        ...entryWithoutTemplate,
+        customItem,
+        quantity: normalizedQuantity - 1,
+        handSlot: null,
+        updatedAt: timestamp
+      };
+      if (nextState) nextOriginal.state = { ...nextState, isLit: false };
+      const nextSplit: InventoryEntry = {
+        ...entryWithoutTemplate,
+        id: crypto.randomUUID(),
+        entityId,
+        customItem,
+        quantity: 1,
+        location,
+        handSlot: normalizedHandSlot,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      };
+      if (nextState) nextSplit.state = nextState;
+      set((state) => ({ inventoryEntries: [...upsertById(state.inventoryEntries, nextOriginal), nextSplit] }));
+      await repository.saveInventoryEntries(campaignId, [nextOriginal, nextSplit]);
+      return { ok: true };
+    }
+    const nextEntry: InventoryEntry = {
+      ...entryWithoutTemplate,
+      entityId,
+      customItem,
+      quantity: normalizedQuantity,
+      location,
+      handSlot: normalizedHandSlot,
+      updatedAt: timestamp
+    };
+    if (nextState) nextEntry.state = nextState;
+    const changedEntries = inventoryEntries
+      .filter((candidate) => descendantIds.has(candidate.id))
+      .map((candidate) =>
+        candidate.id === nextEntry.id
+          ? nextEntry
+          : { ...candidate, entityId, handSlot: null, updatedAt: timestamp }
+      );
+    set((state) => ({
+      inventoryEntries: state.inventoryEntries.map((candidate) => changedEntries.find((changed) => changed.id === candidate.id) ?? candidate)
+    }));
+    await repository.saveInventoryEntries(campaignId, changedEntries);
+    return { ok: true };
+  },
+
   async updateInventoryEntry(entry) {
     const { campaignId } = get();
     if (!campaignId || !repository) return;
     const nextEntry = { ...entry, updatedAt: nowIso() };
     set((state) => ({ inventoryEntries: upsertById(state.inventoryEntries, nextEntry) }));
     await repository.saveInventoryEntry(campaignId, nextEntry);
+  },
+
+  async upsertCoinPurseCoins({ entityId, purseEntryId, coins }) {
+    const { campaignId, catalogs, inventoryEntries } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const repo = repository;
+    const purse = inventoryEntries.find((entry) => entry.id === purseEntryId);
+    if (!purse || purse.entityId !== entityId || !isCoinPurseEntry(purse, catalogs)) {
+      return { ok: false, message: "Choose a valid coin purse." };
+    }
+
+    const normalizedCoins = normalizeCoins(coins);
+    const totalCoins = coinTotal(normalizedCoins);
+    const timestamp = nowIso();
+    const coinEntries = directChildrenOf(purseEntryId, inventoryEntries).filter((entry) => isCoinEntry(entry, catalogs));
+    const [primaryCoinEntry, ...duplicateCoinEntries] = coinEntries;
+    const idsToDelete = new Set<string>();
+    duplicateCoinEntries.forEach((entry) => collectInventoryDescendantIds(entry.id, inventoryEntries).forEach((id) => idsToDelete.add(id)));
+
+    if (totalCoins === 0) {
+      coinEntries.forEach((entry) => collectInventoryDescendantIds(entry.id, inventoryEntries).forEach((id) => idsToDelete.add(id)));
+      if (idsToDelete.size === 0) return { ok: true };
+      set((state) => ({ inventoryEntries: state.inventoryEntries.filter((entry) => !idsToDelete.has(entry.id)) }));
+      await Promise.all([...idsToDelete].map((id) => repo.deleteInventoryEntry(campaignId, id)));
+      return { ok: true };
+    }
+
+    const coinEntry: InventoryEntry = {
+      id: primaryCoinEntry?.id ?? crypto.randomUUID(),
+      entityId,
+      customItem: createTreasureItem(primaryCoinEntry?.customItem?.id ?? crypto.randomUUID(), "Coins", "Coins in this purse.", null, 1),
+      quantity: totalCoins,
+      location: { kind: "contained", parentEntryId: purseEntryId },
+      handSlot: null,
+      state: { coins: normalizedCoins },
+      createdAt: primaryCoinEntry?.createdAt ?? timestamp,
+      updatedAt: timestamp
+    };
+
+    set((state) => ({
+      inventoryEntries: upsertById(
+        state.inventoryEntries.filter((entry) => !idsToDelete.has(entry.id)),
+        coinEntry
+      )
+    }));
+    await Promise.all([
+      repo.saveInventoryEntry(campaignId, coinEntry),
+      ...[...idsToDelete].map((id) => repo.deleteInventoryEntry(campaignId, id))
+    ]);
+    return { ok: true };
   },
 
   async moveInventoryEntry({ entryId, entityId, location, handSlot = null }) {
@@ -229,6 +430,28 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const timestamp = nowIso();
+    const item = entryItem(entry, catalogs);
+    if (shouldSplitForHandUse(entry, item, normalizedHandSlot)) {
+      const [original, split] = splitInventoryEntry(entry, 1);
+      const nextOriginal: InventoryEntry = {
+        ...original,
+        handSlot: null,
+        state: original.state ? { ...original.state, isLit: false } : undefined,
+        updatedAt: timestamp
+      };
+      const nextSplit: InventoryEntry = {
+        ...split,
+        entityId,
+        location,
+        handSlot: normalizedHandSlot,
+        updatedAt: timestamp
+      };
+      set((state) => ({
+        inventoryEntries: [...upsertById(state.inventoryEntries, nextOriginal), nextSplit]
+      }));
+      await repository.saveInventoryEntries(campaignId, [nextOriginal, nextSplit]);
+      return { ok: true };
+    }
     const nextEntry: InventoryEntry = {
       ...entry,
       entityId,
@@ -250,10 +473,10 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   },
 
   async splitEntry(entryId, quantity) {
-    const { campaignId, inventoryEntries } = get();
+    const { campaignId, inventoryEntries, catalogs } = get();
     if (!campaignId || !repository) return;
     const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
-    if (!entry || entry.quantity <= 1) return;
+    if (!entry || entry.quantity <= 1 || isCoinEntry(entry, catalogs)) return;
     const [original, split] = splitInventoryEntry(entry, quantity);
     const timestamp = nowIso();
     const nextOriginal = { ...original, updatedAt: timestamp };
@@ -268,14 +491,35 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
     if (!entry) return;
     const item = entryItem(entry, catalogs);
+    if (!item.emitsLight) return;
+    const nextIsLit = !entry.state?.isLit;
+    if (nextIsLit && entry.state?.isDepleted) return;
+    const timestamp = nowIso();
+    if (nextIsLit && shouldSplitForActiveUse(entry, item)) {
+      const [original, split] = splitInventoryEntry(entry, 1);
+      const nextOriginal: InventoryEntry = {
+        ...original,
+        state: { ...original.state, isLit: false },
+        updatedAt: timestamp
+      };
+      const nextSplit: InventoryEntry = {
+        ...split,
+        state: activeLightState(item, entry.state),
+        updatedAt: timestamp
+      };
+      set((state) => ({ inventoryEntries: [...upsertById(state.inventoryEntries, nextOriginal), nextSplit] }));
+      await repository.saveInventoryEntries(campaignId, [nextOriginal, nextSplit]);
+      return;
+    }
     const nextEntry: InventoryEntry = {
       ...entry,
       state: {
         ...initialStateForTemplate(item),
         ...entry.state,
-        isLit: !entry.state?.isLit
+        isLit: nextIsLit,
+        isDepleted: nextIsLit ? false : entry.state?.isDepleted
       },
-      updatedAt: nowIso()
+      updatedAt: timestamp
     };
     set((state) => ({ inventoryEntries: upsertById(state.inventoryEntries, nextEntry) }));
     await repository.saveInventoryEntry(campaignId, nextEntry);
@@ -284,13 +528,38 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   async spendTurn() {
     const { campaignId, inventoryEntries, catalogs } = get();
     if (!campaignId || !repository) return;
-    const changed = inventoryEntries
-      .map((entry) => spendLightTurnPatch(entry, catalogs))
-      .filter((entry): entry is InventoryEntry => Boolean(entry))
-      .map((entry) => ({ ...entry, updatedAt: nowIso() }));
-    if (changed.length === 0) return;
-    set((state) => ({ inventoryEntries: state.inventoryEntries.map((entry) => changed.find((next) => next.id === entry.id) ?? entry) }));
-    await repository.saveInventoryEntries(campaignId, changed);
+    const repo = repository;
+    const timestamp = nowIso();
+    const changed: InventoryEntry[] = [];
+    const consumedIds = new Set<string>();
+    for (const entry of inventoryEntries) {
+      const result = spendLightTurn(entry, catalogs);
+      if (!result) continue;
+      if (result.disposition === "consumed") {
+        if (entry.quantity > 1) {
+          changed.push({
+            ...entry,
+            quantity: entry.quantity - 1,
+            state: initialStateForTemplate(entryItem(entry, catalogs)),
+            updatedAt: timestamp
+          });
+        } else {
+          collectInventoryDescendantIds(entry.id, inventoryEntries).forEach((id) => consumedIds.add(id));
+        }
+      } else {
+        changed.push({ ...result.entry, updatedAt: timestamp });
+      }
+    }
+    if (changed.length === 0 && consumedIds.size === 0) return;
+    set((state) => ({
+      inventoryEntries: state.inventoryEntries
+        .filter((entry) => !consumedIds.has(entry.id))
+        .map((entry) => changed.find((next) => next.id === entry.id) ?? entry)
+    }));
+    await Promise.all([
+      changed.length ? repo.saveInventoryEntries(campaignId, changed) : Promise.resolve(),
+      ...[...consumedIds].map((id) => repo.deleteInventoryEntry(campaignId, id))
+    ]);
   },
 
   async deleteEntry(entryId) {
@@ -312,12 +581,218 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
 function initialStateForTemplate(template: ItemTemplate | undefined): InventoryEntry["state"] | undefined {
   if (!template) return undefined;
-  if (!template.emitsLight && !template.gear?.durationTurnsMax) return undefined;
-  return {
+  if (!template.emitsLight && !template.gear?.durationTurnsMax && !template.gear?.usesMax && !template.gear?.usesRemaining) return undefined;
+  const usesRemaining = template.gear?.usesRemaining ?? template.gear?.usesMax ?? undefined;
+  const state: InventoryEntry["state"] = {
     isLit: false,
+    isDepleted: false,
     durationTurnsUsed: template.gear?.durationTurnsUsed ?? 0,
     durationTurnsMax: template.gear?.durationTurnsMax ?? null
   };
+  if (usesRemaining !== undefined) state.usesRemaining = usesRemaining;
+  return state;
+}
+
+function stateForItemUpdate(item: ItemTemplate, previousState: InventoryEntry["state"]): InventoryEntry["state"] | undefined {
+  const initialState = initialStateForTemplate(item);
+  if (!initialState && !previousState) return undefined;
+  const usesRemaining = item.gear?.usesRemaining ?? item.gear?.usesMax ?? previousState?.usesRemaining ?? undefined;
+  const coins = previousState?.coins && item.type === "treasure" && item.name.trim().toLowerCase() === "coins"
+    ? normalizeCoins(previousState.coins)
+    : undefined;
+  if (!initialState && coins) return { coins };
+  const state: InventoryEntry["state"] = {
+    ...initialState,
+    customName: previousState?.customName ?? null,
+    customDescription: previousState?.customDescription ?? null,
+    chargesRemaining: previousState?.chargesRemaining ?? null,
+    isLit: item.emitsLight ? previousState?.isLit ?? false : false,
+    isDepleted: item.emitsLight ? previousState?.isDepleted ?? false : false,
+    durationTurnsUsed: item.gear?.durationTurnsUsed ?? previousState?.durationTurnsUsed ?? 0,
+    durationTurnsMax: item.gear?.durationTurnsMax ?? null
+  };
+  if (usesRemaining !== undefined) state.usesRemaining = usesRemaining;
+  if (coins) state.coins = coins;
+  return state;
+}
+
+function shouldSplitForHandUse(entry: InventoryEntry, item: ItemTemplate, handSlot: HandSlot | null): boolean {
+  return shouldSplitQuantityForHandUse(entry.quantity, item, handSlot);
+}
+
+function shouldSplitQuantityForHandUse(quantity: number, item: ItemTemplate | undefined, handSlot: HandSlot | null): boolean {
+  return Boolean(handSlot && quantity > 1 && (item?.handsRequired ?? 0) > 0);
+}
+
+function shouldSplitForActiveUse(entry: InventoryEntry, item: ItemTemplate): boolean {
+  return entry.quantity > 1 && Boolean(item.emitsLight || item.gear?.durationTurnsMax || item.gear?.usesMax);
+}
+
+function createNewHeldUnitSplit({
+  entityId,
+  itemTemplateId,
+  customItem,
+  quantity,
+  location,
+  handSlot,
+  state,
+  timestamp
+}: {
+  entityId: string;
+  itemTemplateId?: string;
+  customItem?: ItemTemplate;
+  quantity: number;
+  location: InventoryLocation;
+  handSlot: HandSlot;
+  state: InventoryEntry["state"];
+  timestamp: string;
+}): InventoryEntry[] {
+  const carriedEntry: InventoryEntry = {
+    id: crypto.randomUUID(),
+    entityId,
+    quantity: quantity - 1,
+    location,
+    handSlot: null,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  const heldEntry: InventoryEntry = {
+    id: crypto.randomUUID(),
+    entityId,
+    quantity: 1,
+    location,
+    handSlot,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  if (itemTemplateId) {
+    carriedEntry.itemTemplateId = itemTemplateId;
+    heldEntry.itemTemplateId = itemTemplateId;
+  }
+  if (customItem) {
+    carriedEntry.customItem = customItem;
+    heldEntry.customItem = customItem;
+  }
+  if (state) {
+    carriedEntry.state = { ...state, isLit: false };
+    heldEntry.state = { ...state };
+  }
+  return [carriedEntry, heldEntry];
+}
+
+function activeLightState(item: ItemTemplate, previousState: InventoryEntry["state"]): InventoryEntry["state"] {
+  const initialState = initialStateForTemplate(item) ?? {};
+  const state: InventoryEntry["state"] = {
+    ...initialState,
+    customName: previousState?.customName ?? null,
+    customDescription: previousState?.customDescription ?? null,
+    chargesRemaining: previousState?.chargesRemaining ?? null,
+    isLit: true,
+    isDepleted: false,
+    durationTurnsUsed: item.gear?.durationTurnsUsed ?? 0,
+    durationTurnsMax: item.gear?.durationTurnsMax ?? null
+  };
+  if (previousState?.usesRemaining !== undefined) state.usesRemaining = previousState.usesRemaining;
+  return state;
+}
+
+function normalizeCustomItem(item: ItemTemplate, fallbackId: string): ItemTemplate {
+  const type = item.type;
+  const customItem: ItemTemplate = {
+    id: item.id || fallbackId,
+    type,
+    identified: item.identified ?? true,
+    name: item.name.trim() || "Custom item",
+    quantity: 1,
+    slotsPerUnit: normalizeNonNegativeNumber(item.slotsPerUnit),
+    stackSize: item.stackSize && item.stackSize > 1 ? Math.floor(item.stackSize) : null,
+    handsRequired: item.handsRequired !== null && item.handsRequired !== undefined ? normalizeNonNegativeNumber(item.handsRequired) : null,
+    emitsLight: Boolean(item.emitsLight),
+    lightRadiusFeet: item.emitsLight ? normalizeNullableNumber(item.lightRadiusFeet) : null,
+    cursed: item.cursed ?? false,
+    curseDescription: item.curseDescription ?? null,
+    gpValue: normalizeNullableNumber(item.gpValue)
+  };
+  const description = item.description?.trim();
+  if (description) customItem.description = description;
+  if (type === "weapon" && item.weapon) customItem.weapon = normalizeWeapon(item.weapon);
+  if (type === "armor" && item.armor) customItem.armor = normalizeArmor(item.armor);
+  if (type === "gear") customItem.gear = normalizeGear(item.gear, item.emitsLight);
+  if (type === "container" && item.container) customItem.container = normalizeContainer(item.container);
+  if (type === "treasure") customItem.treasure = {};
+  return customItem;
+}
+
+function normalizeWeapon(weapon: NonNullable<ItemTemplate["weapon"]>): NonNullable<ItemTemplate["weapon"]> {
+  return {
+    damage: weapon.damage.trim() || "1d6",
+    rangeShort: normalizeNullableNumber(weapon.rangeShort),
+    rangeMedium: normalizeNullableNumber(weapon.rangeMedium),
+    rangeLong: normalizeNullableNumber(weapon.rangeLong),
+    qualities: weapon.qualities?.map((quality) => quality.trim()).filter(Boolean) ?? []
+  };
+}
+
+function normalizeArmor(armor: NonNullable<ItemTemplate["armor"]>): NonNullable<ItemTemplate["armor"]> {
+  return {
+    armorType: armor.armorType,
+    baseAcAscending: normalizeNullableNumber(armor.baseAcAscending),
+    acBonus: normalizeNullableNumber(armor.acBonus),
+    magicAcBonus: normalizeNullableNumber(armor.magicAcBonus)
+  };
+}
+
+function normalizeGear(gear: ItemTemplate["gear"], emitsLight: boolean | undefined): NonNullable<ItemTemplate["gear"]> {
+  const usesMax = normalizeNullableNumber(gear?.usesMax);
+  return {
+    gearKind: gear?.gearKind ?? "misc",
+    usesMax,
+    usesRemaining: normalizeNullableNumber(gear?.usesRemaining) ?? usesMax,
+    consumedOnUse: gear?.consumedOnUse ?? false,
+    durationTurnsMax: normalizeNullableNumber(gear?.durationTurnsMax),
+    durationTurnsUsed: normalizeNullableNumber(gear?.durationTurnsUsed) ?? 0,
+    durationDescription: gear?.durationDescription ?? null,
+    containsSpells: false,
+    spellData: null,
+    language: null,
+    readable: null,
+    deciphered: null,
+    rulesNote: emitsLight ? "Light source." : null
+  };
+}
+
+function normalizeContainer(container: NonNullable<ItemTemplate["container"]>): NonNullable<ItemTemplate["container"]> {
+  const normalizedContainer: NonNullable<ItemTemplate["container"]> = {
+    capacitySlots: normalizeNonNegativeNumber(container.capacitySlots),
+    canBeStowed: container.canBeStowed ?? true,
+    slotsWhenStowed: normalizeNonNegativeNumber(container.slotsWhenStowed),
+    loadCategory: container.loadCategory ?? "stowed"
+  };
+  const coinCapacity = normalizeNullableNumber(container.coinCapacity);
+  if (coinCapacity !== null) normalizedContainer.coinCapacity = coinCapacity;
+  return normalizedContainer;
+}
+
+function normalizeQuantity(quantity: number): number {
+  return Math.max(1, Math.floor(Number.isFinite(quantity) ? quantity : 1));
+}
+
+function normalizeNonNegativeNumber(value: number | null | undefined): number {
+  return Math.max(0, Math.floor(Number.isFinite(value) ? Number(value) : 0));
+}
+
+function normalizeNullableNumber(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.floor(value));
+}
+
+function directChildrenOf(parentEntryId: string, entries: InventoryEntry[]): InventoryEntry[] {
+  return entries.filter(
+    (entry) =>
+      isInventoryLocation(entry.location) &&
+      entry.location.kind === "contained" &&
+      entry.location.parentEntryId === parentEntryId
+  );
 }
 
 function upsertById<T extends { id: string }>(items: T[], item: T): T[] {

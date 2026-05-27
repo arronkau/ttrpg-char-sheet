@@ -116,6 +116,7 @@ export function createStarterCampaign(id: string, name = "Arden Vul Table"): Cam
       quantity: 35,
       location: { kind: "contained", parentEntryId: "entry-mira-pouch" },
       handSlot: null,
+      state: { coins: { pp: 0, gp: 35, sp: 0, cp: 0 } },
       createdAt,
       updatedAt: createdAt
     },

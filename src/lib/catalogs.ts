@@ -47,7 +47,8 @@ export function buildCatalogs(): Catalogs {
     container: item.container
       ? {
           ...item.container,
-          loadCategory: item.container.loadCategory ?? (item.id === "item_belt_pouch_005" ? "equipped" : "stowed")
+          loadCategory: item.container.loadCategory ?? (item.id === "item_belt_pouch_005" ? "equipped" : "stowed"),
+          coinCapacity: item.container.coinCapacity ?? (item.id === "item_belt_pouch_005" ? 100 : undefined)
         }
       : undefined
   }));
@@ -88,4 +89,8 @@ export function itemSearchText(item: ItemTemplate): string {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+export function defaultInventoryQuantity(item: ItemTemplate): number {
+  return item.stackSize && item.stackSize > 1 ? item.stackSize : item.quantity || 1;
 }

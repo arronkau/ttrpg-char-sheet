@@ -4,6 +4,13 @@ export type HandSlot = "left_hand" | "right_hand" | "both_hands";
 
 export type ContainerLoadCategory = "equipped" | "stowed";
 
+export type CoinBreakdown = {
+  pp: number;
+  gp: number;
+  sp: number;
+  cp: number;
+};
+
 export type InventoryLocation =
   | { kind: "equipped" }
   | { kind: "contained"; parentEntryId: string };
@@ -131,6 +138,7 @@ export type ItemTemplate = {
     canBeStowed?: boolean;
     slotsWhenStowed: number;
     loadCategory?: ContainerLoadCategory;
+    coinCapacity?: number;
   };
   treasure?: Record<string, never>;
 };
@@ -149,10 +157,12 @@ export type InventoryEntryState = {
   chargesRemaining?: number | null;
   usesRemaining?: number | null;
   isLit?: boolean;
+  isDepleted?: boolean;
   durationTurnsUsed?: number | null;
   durationTurnsMax?: number | null;
   customName?: string | null;
   customDescription?: string | null;
+  coins?: CoinBreakdown;
 };
 
 export type InventoryEntry = {
@@ -275,6 +285,9 @@ export type InventoryNode = {
   usedSlots: number;
   capacitySlots?: number;
   overCapacity: boolean;
+  usedCoins: number;
+  coinCapacity?: number;
+  overCoinCapacity: boolean;
 };
 
 export type InventoryTree = {
