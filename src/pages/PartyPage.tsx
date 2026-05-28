@@ -1,4 +1,4 @@
-import { AlertTriangle, Flame, Hand, HeartPulse, Shield, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Flame, Hand, HeartPulse, Shield } from "lucide-react";
 import { useMemo, useState } from "react";
 import { displayName, entityHandOccupancy, entryItem, isActiveLight, summarizeEntity, turnsRemaining } from "../lib/rules";
 import { useCampaignStore } from "../store/campaignStore";
@@ -57,10 +57,7 @@ function PartyCard({
   const [warningsOpen, setWarningsOpen] = useState(false);
   const warningPanelId = `warnings-${summary.entity.id}`;
   const classLabel = classLevelLabel(summary, catalogs);
-  const loadValue =
-    summary.capacitySlots !== null && summary.capacitySlots !== undefined
-      ? `${summary.carriedSlots}/${summary.capacitySlots}`
-      : `${summary.carriedSlots}`;
+  const languagesLabel = summary.entity.languages?.length ? summary.entity.languages.join(", ") : "No languages";
 
   return (
     <article className="party-card">
@@ -100,10 +97,9 @@ function PartyCard({
       </header>
 
       <div className="party-stat-grid">
-        <PartyStat icon={<Shield size={15} />} label="AC" value={summary.armorClass ?? "—"} />
-        <PartyStat icon={<HeartPulse size={15} />} label="HP" value={summary.entity.hp ? `${summary.entity.hp.currentHp}/${summary.entity.hp.maxHp}` : "—"} />
-        <PartyStat label="Move" value={`${summary.movementExploration}/${summary.movementEncounter}`} />
-        <PartyStat icon={<ShieldAlert size={15} />} label="Load" value={loadValue} detail={summary.encumbranceLabel} />
+        <PartyStat label="Move" value={`${summary.movementExploration}/${summary.movementEncounter}`} priority="primary" />
+        <PartyStat icon={<Shield size={13} />} label="AC" value={summary.armorClass ?? "—"} />
+        <PartyStat icon={<HeartPulse size={13} />} label="HP" value={summary.entity.hp ? `${summary.entity.hp.currentHp}/${summary.entity.hp.maxHp}` : "—"} />
       </div>
 
       <section className="party-hands">
@@ -128,6 +124,11 @@ function PartyCard({
           ))}
         </div>
       </section>
+
+      <div className="party-languages">
+        <span>Languages</span>
+        <strong>{languagesLabel}</strong>
+      </div>
     </article>
   );
 }
@@ -136,15 +137,17 @@ function PartyStat({
   icon,
   label,
   value,
-  detail
+  detail,
+  priority = "normal"
 }: {
   icon?: ReactNode;
   label: string;
   value: string | number;
   detail?: string;
+  priority?: "normal" | "primary";
 }) {
   return (
-    <div className="party-stat">
+    <div className={priority === "primary" ? "party-stat primary" : "party-stat"}>
       <span>
         {icon}
         {label}

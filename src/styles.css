@@ -1069,17 +1069,17 @@ h3 {
 
 .party-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.65rem;
   align-items: start;
 }
 
 .party-card {
   position: relative;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.55rem;
   min-width: 0;
-  padding: 0.85rem;
+  padding: 0.65rem;
   border: 1px solid #d0c7b3;
   border-radius: 8px;
   background: #fffaf0;
@@ -1090,7 +1090,7 @@ h3 {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.55rem;
+  gap: 0.45rem;
 }
 
 .party-card-header > div:first-child {
@@ -1108,22 +1108,22 @@ h3 {
 }
 
 .party-card-header p {
-  margin-top: 0.15rem;
+  margin-top: 0.1rem;
   color: #676054;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
 .entity-type-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0.15rem 0.45rem;
+  min-height: 22px;
+  padding: 0.1rem 0.4rem;
   border: 1px solid #d4c8ad;
   border-radius: 999px;
   background: #f2ead8;
   color: #5b5549;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 900;
 }
 
@@ -1133,8 +1133,8 @@ h3 {
 }
 
 .party-warning-button {
-  min-height: 30px;
-  padding: 0.25rem 0.55rem;
+  min-height: 28px;
+  padding: 0.2rem 0.5rem;
 }
 
 .party-warning-panel {
@@ -1178,19 +1178,46 @@ h3 {
   line-height: 1.35;
 }
 
+.party-languages {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #e1d8c5;
+  border-radius: 6px;
+  background: #fffdf8;
+}
+
+.party-languages span {
+  color: #676054;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.party-languages strong {
+  min-width: 0;
+  color: #302d27;
+  font-size: 0.76rem;
+  font-weight: 850;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .party-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: minmax(88px, 1.25fr) repeat(2, minmax(54px, 0.7fr));
+  gap: 0.4rem;
 }
 
 .party-stat {
   display: grid;
   align-content: start;
-  gap: 0.15rem;
+  gap: 0.1rem;
   min-width: 0;
-  min-height: 74px;
-  padding: 0.55rem;
+  min-height: 54px;
+  padding: 0.45rem;
   border: 1px solid #e1d8c5;
   border-radius: 6px;
   background: #fffdf8;
@@ -1203,13 +1230,17 @@ h3 {
   align-items: center;
   gap: 0.3rem;
   color: #676054;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   font-weight: 900;
 }
 
 .party-stat strong {
-  font-size: 1.08rem;
+  font-size: 0.95rem;
   line-height: 1.1;
+}
+
+.party-stat.primary strong {
+  font-size: 1.18rem;
 }
 
 .party-stat small {
@@ -1221,24 +1252,24 @@ h3 {
 
 .party-hands {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.35rem;
 }
 
 .party-hands h4 {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .party-hand-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
 }
 
 .party-hand-slot {
   display: grid;
-  gap: 0.35rem;
-  min-height: 76px;
-  padding: 0.55rem;
+  gap: 0.3rem;
+  min-height: 62px;
+  padding: 0.45rem;
   border: 1px dashed #d6ccb9;
   border-radius: 6px;
   background: #fffdf8;
@@ -1254,31 +1285,34 @@ h3 {
 
 .party-hand-slot p {
   color: #777064;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
 }
 
 .party-hand-items {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .party-hand-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  width: 100%;
   max-width: 100%;
-  min-height: 28px;
-  padding: 0.22rem 0.5rem;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0.18rem 0.45rem;
   border: 1px solid #ddd1bc;
   border-radius: 999px;
   background: #f8f1e4;
   color: #302d27;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 850;
 }
 
 .party-hand-chip span {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1286,10 +1320,12 @@ h3 {
 }
 
 .party-hand-chip small {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   color: #61410d;
   font-size: 0.72rem;
   font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .party-hand-chip.lit {
