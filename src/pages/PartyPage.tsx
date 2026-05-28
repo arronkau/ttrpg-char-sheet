@@ -1,7 +1,9 @@
-import { AlertTriangle, Flame, HeartPulse, Shield } from "lucide-react";
-import { useMemo } from "react";
-import { summarizeEntity } from "../lib/rules";
+import { AlertTriangle, Flame, Hand, HeartPulse, Shield, ShieldAlert } from "lucide-react";
+import { useMemo, useState } from "react";
+import { displayName, entityHandOccupancy, entryItem, isActiveLight, summarizeEntity, turnsRemaining } from "../lib/rules";
 import { useCampaignStore } from "../store/campaignStore";
+import type { ReactNode } from "react";
+import type { Catalogs, EntitySummary, InventoryEntry, ViewMode } from "../types";
 
 export function PartyPage() {
   const entities = useCampaignStore((state) => state.entities);
@@ -11,7 +13,7 @@ export function PartyPage() {
   const summaries = useMemo(
     () =>
       entities
-        .filter((entity) => entity.active)
+        .filter((entity) => entity.active && entity.type !== "storage")
         .map((entity) => summarizeEntity(entity, inventoryEntries, catalogs, viewMode)),
     [entities, inventoryEntries, catalogs, viewMode]
   );
@@ -25,83 +27,172 @@ export function PartyPage() {
             <h2>Table Summary</h2>
           </div>
         </div>
-        <div className="summary-table-wrap">
-          <table className="summary-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Class</th>
-                <th>AC</th>
-                <th>HP</th>
-                <th>Move</th>
-                <th>Load</th>
-                <th>Light</th>
-                <th>Warnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaries.map((summary) => (
-                <tr key={summary.entity.id}>
-                  <td>
-                    <strong>{summary.entity.name}</strong>
-                    <span>{summary.entity.type}</span>
-                  </td>
-                  <td>{summary.entity.classId ? `${summary.entity.classId} ${summary.level ?? ""}` : "—"}</td>
-                  <td>
-                    <Shield size={15} />
-                    {summary.armorClass ?? "—"}
-                  </td>
-                  <td>
-                    <HeartPulse size={15} />
-                    {summary.entity.hp ? `${summary.entity.hp.currentHp}/${summary.entity.hp.maxHp}` : "—"}
-                  </td>
-                  <td>{summary.movementExploration}/{summary.movementEncounter}</td>
-                  <td>
-                    {summary.carriedSlots}
-                    {summary.capacitySlots !== null && summary.capacitySlots !== undefined ? `/${summary.capacitySlots}` : ""} · {summary.encumbranceLabel}
-                  </td>
-                  <td>
-                    {summary.activeLights.length ? (
-                      summary.activeLights.map((light) => (
-                        <span className="light-chip" key={light.entryId}>
-                          <Flame size={13} />
-                          {light.name} {light.turnsRemaining ?? "∞"}
-                        </span>
-                      ))
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td>
-                    {summary.warnings.length ? (
-                      <span className="warning-chip">
-                        <AlertTriangle size={14} />
-                        {summary.warnings.length}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="party-card-grid">
+          {summaries.map((summary) => (
+            <PartyCard
+              key={summary.entity.id}
+              summary={summary}
+              inventoryEntries={inventoryEntries}
+              catalogs={catalogs}
+              viewMode={viewMode}
+            />
+          ))}
         </div>
-      </section>
-
-      <section className="warning-grid">
-        {summaries.flatMap((summary) =>
-          summary.warnings.map((warning, index) => (
-            <article className={`warning-card ${warning.severity}`} key={`${summary.entity.id}-${index}`}>
-              <AlertTriangle size={18} />
-              <div>
-                <strong>{summary.entity.name}</strong>
-                <p>{warning.message}</p>
-              </div>
-            </article>
-          ))
-        )}
       </section>
     </main>
   );
+}
+
+function PartyCard({
+  summary,
+  inventoryEntries,
+  catalogs,
+  viewMode
+}: {
+  summary: EntitySummary;
+  inventoryEntries: InventoryEntry[];
+  catalogs: Catalogs;
+  viewMode: ViewMode;
+}) {
+  const [warningsOpen, setWarningsOpen] = useState(false);
+  const warningPanelId = `warnings-${summary.entity.id}`;
+  const classLabel = classLevelLabel(summary, catalogs);
+  const loadValue =
+    summary.capacitySlots !== null && summary.capacitySlots !== undefined
+      ? `${summary.carriedSlots}/${summary.capacitySlots}`
+      : `${summary.carriedSlots}`;
+
+  return (
+    <article className="party-card">
+      <header className="party-card-header">
+        <div>
+          <div className="party-card-title">
+            <h3>{summary.entity.name}</h3>
+            <span className="entity-type-chip">{titleCase(summary.entity.type)}</span>
+          </div>
+          <p>{classLabel}</p>
+        </div>
+        {summary.warnings.length > 0 && (
+          <div className="party-warning-wrap">
+            <button
+              className="warning-chip party-warning-button"
+              type="button"
+              aria-expanded={warningsOpen}
+              aria-controls={warningPanelId}
+              onClick={() => setWarningsOpen((open) => !open)}
+              title={warningsOpen ? "Hide warnings" : "Show warnings"}
+            >
+              <AlertTriangle size={14} />
+              {summary.warnings.length}
+            </button>
+            {warningsOpen && (
+              <div className="party-warning-panel" id={warningPanelId}>
+                {summary.warnings.map((warning, index) => (
+                  <div className={`party-warning-detail ${warning.severity}`} key={`${warning.message}-${index}`}>
+                    <strong>{titleCase(warning.severity)}</strong>
+                    <p>{warning.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </header>
+
+      <div className="party-stat-grid">
+        <PartyStat icon={<Shield size={15} />} label="AC" value={summary.armorClass ?? "—"} />
+        <PartyStat icon={<HeartPulse size={15} />} label="HP" value={summary.entity.hp ? `${summary.entity.hp.currentHp}/${summary.entity.hp.maxHp}` : "—"} />
+        <PartyStat label="Move" value={`${summary.movementExploration}/${summary.movementEncounter}`} />
+        <PartyStat icon={<ShieldAlert size={15} />} label="Load" value={loadValue} detail={summary.encumbranceLabel} />
+      </div>
+
+      <section className="party-hands">
+        <h4>
+          <Hand size={15} />
+          Hands
+        </h4>
+        <div className="party-hand-grid">
+          {handSections(summary.entity.id, inventoryEntries).map((section) => (
+            <div className={section.entries.length ? "party-hand-slot occupied" : "party-hand-slot"} key={section.label}>
+              <span>{section.label}</span>
+              {section.entries.length ? (
+                <div className="party-hand-items">
+                  {section.entries.map((entry) => (
+                    <HandEntryChip entry={entry} catalogs={catalogs} viewMode={viewMode} key={`${section.label}-${entry.id}`} />
+                  ))}
+                </div>
+              ) : (
+                <p>Empty</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    </article>
+  );
+}
+
+function PartyStat({
+  icon,
+  label,
+  value,
+  detail
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: string | number;
+  detail?: string;
+}) {
+  return (
+    <div className="party-stat">
+      <span>
+        {icon}
+        {label}
+      </span>
+      <strong>{value}</strong>
+      {detail && <small>{detail}</small>}
+    </div>
+  );
+}
+
+function HandEntryChip({ entry, catalogs, viewMode }: { entry: InventoryEntry; catalogs: Catalogs; viewMode: ViewMode }) {
+  const item = entryItem(entry, catalogs);
+  const remaining = turnsRemaining(entry, item);
+  const activeLight = isActiveLight(entry, catalogs);
+  const lightParts = [
+    remaining === null ? "lit" : `${remaining} ${remaining === 1 ? "turn" : "turns"}`,
+    item.lightRadiusFeet ? `${item.lightRadiusFeet} ft` : null
+  ].filter(Boolean);
+
+  return (
+    <span className={activeLight ? "party-hand-chip lit" : "party-hand-chip"}>
+      {activeLight && <Flame size={13} />}
+      <span>{displayName(entry, catalogs, viewMode)}</span>
+      {activeLight && lightParts.length > 0 && <small>{lightParts.join(" · ")}</small>}
+    </span>
+  );
+}
+
+function handSections(entityId: string, entries: InventoryEntry[]) {
+  const entityEntries = entries.filter((entry) => entry.entityId === entityId);
+  const bothHands = entityEntries.filter((entry) => entry.handSlot === "both_hands");
+  if (bothHands.length > 0) return [{ label: "Both hands", entries: bothHands }];
+
+  const hands = entityHandOccupancy(entityId, entries);
+  return [
+    { label: "Left", entries: hands.left_hand },
+    { label: "Right", entries: hands.right_hand }
+  ];
+}
+
+function classLevelLabel(summary: EntitySummary, catalogs: Catalogs): string {
+  if (!summary.entity.classId) return "No class";
+  const className = catalogs.classesById[summary.entity.classId]?.class_name ?? titleCase(summary.entity.classId.replace(/[-_]/g, " "));
+  return summary.level ? `${className.replace(/-/g, " ")} ${summary.level}` : className.replace(/-/g, " ");
+}
+
+function titleCase(value: string): string {
+  return value
+    .replace(/[-_]/g, " ")
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }

@@ -29,7 +29,7 @@ function StartPage() {
   const onCreate = async () => {
     setBusy(true);
     const campaignId = await createCampaign(name);
-    navigate(`/campaign/${campaignId}/inventory`);
+    navigate(`/campaign/${campaignId}/party`);
   };
 
   return (
@@ -54,7 +54,7 @@ function StartPage() {
             Campaign id
             <input value={joinId} onChange={(event) => setJoinId(event.target.value.trim())} />
           </label>
-          <button onClick={() => navigate(`/campaign/${joinId || "demo-table"}/inventory`)}>
+          <button onClick={() => navigate(`/campaign/${joinId || "demo-table"}/party`)}>
             <Users size={18} />
             Join
           </button>
@@ -132,13 +132,13 @@ function CampaignShell() {
       </header>
       {entityManagerOpen && <EntityManagerModal onClose={() => setEntityManagerOpen(false)} />}
       <nav className="main-nav">
-        <NavLink to={`/campaign/${campaignId}/inventory`}>
-          <Boxes size={18} />
-          Inventory
-        </NavLink>
         <NavLink to={`/campaign/${campaignId}/party`}>
           <ClipboardList size={18} />
           Party
+        </NavLink>
+        <NavLink to={`/campaign/${campaignId}/inventory`}>
+          <Boxes size={18} />
+          Inventory
         </NavLink>
         <NavLink to={`/campaign/${campaignId}/sheet`}>
           <FileText size={18} />
@@ -154,7 +154,7 @@ function CampaignShell() {
         </NavLink>
       </nav>
       <Routes>
-        <Route path="/" element={<InventoryPage />} />
+        <Route path="/" element={<PartyPage />} />
         <Route path="inventory" element={<InventoryPage />} />
         <Route path="party" element={<PartyPage />} />
         <Route path="sheet" element={<CharacterPage />} />
