@@ -82,13 +82,13 @@ export function CharacterPage() {
           </label>
           <label>
             XP
-            <input type="number" value={entity.xp ?? 0} onChange={(event) => patchEntity({ xp: Number(event.target.value) })} />
+            <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.xp ?? 0} onChange={(event) => patchEntity({ xp: Number(event.target.value) })} />
           </label>
           <div className="inline-fields">
             <label>
               HP
               <input
-                type="number"
+                type="text" inputMode="numeric" pattern="[0-9]*"
                 value={entity.hp?.currentHp ?? 0}
                 onChange={(event) => patchEntity({ hp: { currentHp: Number(event.target.value), maxHp: entity.hp?.maxHp ?? 1 } })}
               />
@@ -96,7 +96,7 @@ export function CharacterPage() {
             <label>
               Max
               <input
-                type="number"
+                type="text" inputMode="numeric" pattern="[0-9]*"
                 value={entity.hp?.maxHp ?? 1}
                 onChange={(event) => patchEntity({ hp: { currentHp: entity.hp?.currentHp ?? 1, maxHp: Number(event.target.value) } })}
               />
@@ -171,7 +171,7 @@ function AbilityGrid({ entity, patchEntity }: { entity: Entity; patchEntity: (pa
         <label key={ability}>
           {ability.slice(0, 3).toUpperCase()}
           <input
-            type="number"
+            type="text" inputMode="numeric" pattern="[0-9]*"
             min={3}
             max={18}
             value={score}

@@ -96,6 +96,48 @@ describe("campaign inventory item actions", () => {
     expect(entryItem(updated!, useCampaignStore.getState().catalogs).weapon?.damage).toBe("1d4+1");
   });
 
+  it("preserves unidentified custom item state through add and edit", async () => {
+    await initializeStore();
+
+    const addResult = await useCampaignStore.getState().addCustomItem({
+      entityId: "entity-mira",
+      item: customItem({
+        id: "custom-mystery-blade",
+        type: "weapon",
+        identified: false,
+        name: "Odd iron blade",
+        slotsPerUnit: 1,
+        handsRequired: 1,
+        weapon: { damage: "1d6", rangeShort: null, rangeMedium: null, rangeLong: null, qualities: ["unknown"] }
+      }),
+      quantity: 1,
+      location: { kind: "equipped" },
+      handSlot: null
+    });
+
+    const entry = useCampaignStore.getState().inventoryEntries.find((candidate) => candidate.customItem?.id === "custom-mystery-blade");
+    expect(addResult.ok).toBe(true);
+    expect(entry?.customItem?.identified).toBe(false);
+
+    const editResult = await useCampaignStore.getState().updateInventoryItem({
+      entryId: entry!.id,
+      entityId: "entity-mira",
+      item: {
+        ...entry!.customItem!,
+        identified: true,
+        name: "Blade +1"
+      },
+      quantity: 1,
+      location: { kind: "equipped" },
+      handSlot: null
+    });
+
+    const updated = useCampaignStore.getState().inventoryEntries.find((candidate) => candidate.id === entry!.id);
+    expect(editResult.ok).toBe(true);
+    expect(updated?.customItem?.identified).toBe(true);
+    expect(updated?.customItem?.name).toBe("Blade +1");
+  });
+
   it("splits one hand-required unit from a stack when moved to hand", async () => {
     await initializeStore();
 
@@ -157,6 +199,23 @@ describe("campaign inventory item actions", () => {
     expect(result.ok).toBe(false);
     expect(torches).toHaveLength(1);
     expect(torches[0].quantity).toBe(3);
+  });
+
+  it("rejects moving non-zero-slot items into a coin purse", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-mira-torch",
+      entityId: "entity-mira",
+      location: { kind: "contained", parentEntryId: "entry-mira-pouch" },
+      handSlot: null
+    });
+
+    const torch = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-torch");
+
+    expect(result.ok).toBe(false);
+    expect(result).toEqual({ ok: false, message: "Coin purses can only hold coins and zero-slot treasure." });
+    expect(torch?.location).toEqual({ kind: "contained", parentEntryId: "entry-mira-backpack" });
   });
 
   it("splits one lit unit from a stack without making inventory light effective", async () => {

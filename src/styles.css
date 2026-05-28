@@ -300,6 +300,11 @@ h3 {
   gap: 0.65rem;
 }
 
+.entity-inventory-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .inventory-section {
   display: grid;
   gap: 0.45rem;
@@ -330,6 +335,11 @@ h3 {
 
 .hand-slot-grid.two-hands {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hand-slot-stack {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .hand-slot-box {
@@ -486,6 +496,27 @@ h3 {
   display: grid;
   gap: 0.3rem;
   min-width: 0;
+}
+
+.inventory-node.container-node {
+  gap: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid #d8c7aa;
+  border-radius: 6px;
+  background: #fffaf0;
+}
+
+.inventory-node.container-node > .inventory-row {
+  padding-left: calc(0.25rem + var(--depth) * 0.75rem);
+  border-style: dashed;
+  background: #fffdf8;
+}
+
+.inventory-node-children {
+  display: grid;
+  gap: 0.3rem;
+  padding-left: 0.35rem;
+  border-left: 2px solid #d8c7aa;
 }
 
 .inventory-row {
@@ -752,6 +783,38 @@ h3 {
   border-top: 1px solid #e7ddcb;
 }
 
+.transfer-panel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  border: 1px solid #e1d8c5;
+  border-radius: 6px;
+  background: #fbf4e8;
+}
+
+.transfer-summary,
+.transfer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.transfer-summary span {
+  min-width: 0;
+  overflow: hidden;
+  color: #676054;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .suggestion-field {
   position: relative;
 }
@@ -944,6 +1007,21 @@ h3 {
 
 .item-modal .three-fields > * {
   min-width: 105px;
+}
+
+.item-modal .four-fields > * {
+  min-width: 112px;
+}
+
+.item-modal .modal-line-1 > .suggestion-field {
+  flex: 2;
+  min-width: 220px;
+}
+
+.compact-checkbox {
+  align-self: end;
+  min-height: 40px;
+  padding-bottom: 0.45rem;
 }
 
 .item-modal footer {

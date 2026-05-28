@@ -201,12 +201,12 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   async addCatalogItem({ entityId, itemTemplateId, quantity, location, handSlot = null }) {
     const { campaignId, catalogs, inventoryEntries, viewMode } = get();
     if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
-    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    const template = catalogs.itemsById[itemTemplateId];
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs, childItem: template });
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
-    const template = catalogs.itemsById[itemTemplateId];
     const timestamp = nowIso();
     const normalizedQuantity = normalizeQuantity(quantity);
     const state = initialStateForTemplate(template);
@@ -243,13 +243,13 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   async addCustomItem({ entityId, item, quantity, location, handSlot = null }) {
     const { campaignId, catalogs, inventoryEntries, viewMode } = get();
     if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
-    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    const customItem = normalizeCustomItem(item, crypto.randomUUID());
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs, childItem: customItem });
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const timestamp = nowIso();
-    const customItem = normalizeCustomItem(item, crypto.randomUUID());
     const normalizedQuantity = normalizeQuantity(quantity);
     const state = initialStateForTemplate(customItem);
     if (normalizedHandSlot && shouldSplitQuantityForHandUse(normalizedQuantity, customItem, normalizedHandSlot)) {
@@ -285,13 +285,13 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   async addCustomTreasure({ entityId, name, description, gpValue, slotsPerUnit, quantity, location, handSlot = null }) {
     const { campaignId, catalogs, inventoryEntries, viewMode } = get();
     if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
-    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs });
+    const item = createTreasureItem(crypto.randomUUID(), name, description, gpValue, slotsPerUnit);
+    const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs, childItem: item });
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const timestamp = nowIso();
-    const item = createTreasureItem(crypto.randomUUID(), name, description, gpValue, slotsPerUnit);
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
       entityId,
@@ -316,13 +316,13 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     if (item.type !== "container" && descendantIds.size > 1) {
       return { ok: false, message: "Move this container's contents out before changing it to another item type." };
     }
-    const placementValidation = validateInventoryPlacement({ entryId, entityId, location, entries: inventoryEntries, catalogs });
-    if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
     if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
     const timestamp = nowIso();
     const customItem = normalizeCustomItem(item, entry.customItem?.id ?? crypto.randomUUID());
+    const placementValidation = validateInventoryPlacement({ entryId, entityId, location, entries: inventoryEntries, catalogs, childItem: customItem });
+    if (!placementValidation.ok) return placementValidation;
     const { itemTemplateId: _itemTemplateId, ...entryWithoutTemplate } = entry;
     const nextState = stateForItemUpdate(customItem, entry.state);
     const normalizedQuantity = normalizeQuantity(quantity);

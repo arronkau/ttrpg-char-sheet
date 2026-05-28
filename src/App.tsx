@@ -319,12 +319,12 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                   </label>
                   <label>
                     GP/day
-                    <input type="number" min={0} value={draft.gpPerDay} onChange={(event) => patchDraft({ gpPerDay: event.target.value })} />
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={draft.gpPerDay} onChange={(event) => patchDraft({ gpPerDay: event.target.value })} />
                   </label>
                   <label>
                     Treasure %
                     <input
-                      type="number"
+                      type="text" inputMode="numeric" pattern="[0-9]*"
                       min={0}
                       max={100}
                       value={draft.treasureSharePercent}
@@ -338,14 +338,14 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                 <div className={usesMovementFields ? "inline-fields three-fields" : "inline-fields"}>
                   <label>
                     Capacity
-                    <input type="number" min={0} value={draft.capacitySlots} onChange={(event) => patchDraft({ capacitySlots: event.target.value })} />
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={draft.capacitySlots} onChange={(event) => patchDraft({ capacitySlots: event.target.value })} />
                   </label>
                   {usesMovementFields && (
                     <>
                       <label>
                         Move
                         <input
-                          type="number"
+                          type="text" inputMode="numeric" pattern="[0-9]*"
                           min={0}
                           value={draft.movementExploration}
                           onChange={(event) => patchDraft({ movementExploration: event.target.value })}
@@ -354,7 +354,7 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                       <label>
                         Encounter
                         <input
-                          type="number"
+                          type="text" inputMode="numeric" pattern="[0-9]*"
                           min={0}
                           value={draft.movementEncounter}
                           onChange={(event) => patchDraft({ movementEncounter: event.target.value })}
@@ -385,7 +385,7 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                     </label>
                     <label>
                       XP
-                      <input type="number" value={draft.xp} onChange={(event) => patchDraft({ xp: event.target.value })} />
+                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={draft.xp} onChange={(event) => patchDraft({ xp: event.target.value })} />
                     </label>
                   </div>
 
@@ -396,11 +396,11 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                     </label>
                     <label>
                       HP
-                      <input type="number" value={draft.currentHp} onChange={(event) => patchDraft({ currentHp: event.target.value })} />
+                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={draft.currentHp} onChange={(event) => patchDraft({ currentHp: event.target.value })} />
                     </label>
                     <label>
                       Max
-                      <input type="number" value={draft.maxHp} onChange={(event) => patchDraft({ maxHp: event.target.value })} />
+                      <input type="text" inputMode="numeric" pattern="[0-9]*" value={draft.maxHp} onChange={(event) => patchDraft({ maxHp: event.target.value })} />
                     </label>
                   </div>
 
@@ -414,7 +414,7 @@ function EntityManagerModal({ onClose }: { onClose: () => void }) {
                       <label key={ability}>
                         {ability.slice(0, 3).toUpperCase()}
                         <input
-                          type="number"
+                          type="text" inputMode="numeric" pattern="[0-9]*"
                           min={3}
                           max={18}
                           value={score}

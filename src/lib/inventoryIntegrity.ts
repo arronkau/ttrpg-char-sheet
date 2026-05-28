@@ -45,26 +45,34 @@ export function validateInventoryPlacement({
   entityId,
   location,
   entries,
-  catalogs
+  catalogs,
+  childItem
 }: {
   entryId?: string;
   entityId: string;
   location: InventoryLocation;
   entries: InventoryEntry[];
   catalogs: Catalogs;
+  childItem?: ItemTemplate;
 }): InventoryActionResult {
   if (!isInventoryLocation(location)) return { ok: false, message: "Choose a valid inventory location." };
   if (location.kind === "equipped") return { ok: true };
 
   const parent = entries.find((entry) => entry.id === location.parentEntryId);
+  const childEntry = entryId ? entries.find((entry) => entry.id === entryId) : undefined;
+  const child = childItem ?? (childEntry ? itemForEntry(childEntry, catalogs) : undefined);
   if (!parent) return { ok: false, message: "Choose a valid container." };
   if (parent.entityId !== entityId) return { ok: false, message: "Choose a container carried by the target entity." };
   if (entryId && parent.id === entryId) return { ok: false, message: "An item cannot be placed inside itself." };
-  if (itemForEntry(parent, catalogs)?.type !== "container") {
+  const parentItem = itemForEntry(parent, catalogs);
+  if (parentItem?.type !== "container") {
     return { ok: false, message: "Items can only be placed inside containers." };
   }
   if (entryId && collectInventoryDescendantIds(entryId, entries).has(parent.id)) {
     return { ok: false, message: "A container cannot be placed inside one of its own contents." };
+  }
+  if (isCoinPurseItem(parentItem) && child && !canPlaceInCoinPurse(child, childEntry)) {
+    return { ok: false, message: "Coin purses can only hold coins and zero-slot treasure." };
   }
 
   return { ok: true };
@@ -121,6 +129,18 @@ function hasContainmentCycle(entry: RecordValue, entryById: Map<string, RecordVa
 function itemForEntry(entry: InventoryEntry, catalogs: Catalogs): ItemTemplate | undefined {
   if (entry.customItem) return entry.customItem;
   return entry.itemTemplateId ? catalogs.itemsById[entry.itemTemplateId] : undefined;
+}
+
+function isCoinPurseItem(item: ItemTemplate): boolean {
+  return item.type === "container" && item.container?.coinCapacity !== undefined;
+}
+
+function canPlaceInCoinPurse(item: ItemTemplate, entry: InventoryEntry | undefined): boolean {
+  return isCoinEntry(entry, item) || (item.type === "treasure" && item.slotsPerUnit <= 0);
+}
+
+function isCoinEntry(entry: InventoryEntry | undefined, item: ItemTemplate): boolean {
+  return Boolean(entry?.state?.coins) || (item.type === "treasure" && item.name.trim().toLowerCase() === "coins");
 }
 
 function isRecord(value: unknown): value is RecordValue {

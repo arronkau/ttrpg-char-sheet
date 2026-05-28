@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeft,
   Backpack,
   Box,
   ChevronDown,
@@ -52,7 +53,6 @@ import type {
   ViewMode
 } from "../types";
 
-const BELT_POUCH_ITEM_ID = "item_belt_pouch_005";
 const itemTypeOptions: ItemType[] = ["gear", "weapon", "armor", "container", "treasure"];
 const armorTypeOptions: ArmorType[] = ["armor", "shield", "helmet"];
 const containerLoadOptions: ContainerLoadCategory[] = ["equipped", "stowed"];
@@ -279,98 +279,55 @@ function EntityInventorySections({
   onResult: (result: InventoryActionResult) => void;
 }) {
   const catalogs = useCampaignStore((state) => state.catalogs);
-  const addCatalogItem = useCampaignStore((state) => state.addCatalogItem);
   const rootNodes = nodes;
   const equippedNodes = rootNodes.filter((node) => node.item.type !== "container" && !node.entry.handSlot);
   const handNodes = rootNodes.filter((node) => Boolean(node.entry.handSlot));
   const coinPurseNodes = rootNodes.filter((node) => isCoinPurseEntry(node.entry, catalogs));
   const containerNodes = rootNodes.filter((node) => node.item.type === "container" && !isCoinPurseEntry(node.entry, catalogs));
-  const allContainerNodes = flattenNodes(nodes).filter((node) => node.item.type === "container");
-  const addCoinPouch = async () => {
-    const result = await addCatalogItem({
-      entityId: entity.id,
-      itemTemplateId: BELT_POUCH_ITEM_ID,
-      quantity: 1,
-      location: { kind: "equipped" },
-      handSlot: null
-    });
-    onResult(result);
-  };
 
   return (
     <div className="inventory-sections">
-      <InventorySection
-        title="Hands"
-        icon={<Hand size={15} />}
-        actionLabel="hand"
-        onAdd={() =>
-          onAdd({
-            mode: "add",
-            entityId: entity.id,
-            location: { kind: "equipped" },
-            handSlot: firstFreeHandSlot(entity.id, nodes),
-            title: `Add to ${entity.name}'s hands`
-          })
-        }
-      >
-        <HandSlots entityId={entity.id} nodes={handNodes} onAdd={onAdd} onEdit={onEdit} />
+      <div className="entity-inventory-actions">
+        <button
+          className="tiny-button primary-action"
+          onClick={() =>
+            onAdd({
+              mode: "add",
+              entityId: entity.id,
+              location: { kind: "equipped" },
+              handSlot: null,
+              title: `Add item to ${entity.name}`
+            })
+          }
+        >
+          <Plus size={13} />
+          Add item
+        </button>
+      </div>
+
+      <InventorySection title="Hands" icon={<Hand size={15} />}>
+        <HandSlots nodes={handNodes} onEdit={onEdit} />
       </InventorySection>
 
-      <InventorySection
-        title="Coin Purse"
-        icon={<Coins size={15} />}
-        actionLabel={coinPurseNodes.length ? undefined : "pouch"}
-        onAdd={coinPurseNodes.length ? undefined : () => void addCoinPouch()}
-      >
-        <CoinPurseList entity={entity} purseNodes={coinPurseNodes} onAdd={onAdd} onEdit={onEdit} onResult={onResult} />
-      </InventorySection>
+      {coinPurseNodes.length > 0 && (
+        <InventorySection title="Coin Purse" icon={<Coins size={15} />}>
+          <CoinPurseList entity={entity} purseNodes={coinPurseNodes} onEdit={onEdit} onResult={onResult} />
+        </InventorySection>
+      )}
 
-      <InventorySection
-        title="Equipped"
-        icon={<Package size={15} />}
-        actionLabel="equip"
-        onAdd={() =>
-          onAdd({
-            mode: "add",
-            entityId: entity.id,
-            location: { kind: "equipped" },
-            handSlot: null,
-            title: `Add equipped item to ${entity.name}`
-          })
-        }
-      >
+      <InventorySection title={rootInventoryTitle(entity)} icon={<Package size={15} />}>
         <NodeList
           nodes={equippedNodes}
-          allContainerNodes={allContainerNodes}
-          empty="Nothing equipped"
-          onAdd={onAdd}
+          empty={rootInventoryEmptyLabel(entity)}
           onEdit={onEdit}
-          onResult={onResult}
         />
       </InventorySection>
 
-      <InventorySection
-        title="Containers"
-        icon={<Backpack size={15} />}
-        actionLabel="container"
-        onAdd={() =>
-          onAdd({
-            mode: "add",
-            entityId: entity.id,
-            location: { kind: "equipped" },
-            handSlot: null,
-            preferredType: "container",
-            title: `Add container to ${entity.name}`
-          })
-        }
-      >
+      <InventorySection title="Containers" icon={<Backpack size={15} />}>
         <NodeList
           nodes={containerNodes}
-          allContainerNodes={allContainerNodes}
           empty="No containers"
-          onAdd={onAdd}
           onEdit={onEdit}
-          onResult={onResult}
         />
       </InventorySection>
     </div>
@@ -380,14 +337,10 @@ function EntityInventorySections({
 function InventorySection({
   title,
   icon,
-  actionLabel,
-  onAdd,
   children
 }: {
   title: string;
   icon: React.ReactNode;
-  actionLabel?: string;
-  onAdd?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -397,12 +350,6 @@ function InventorySection({
           {icon}
           {title}
         </span>
-        {onAdd && (
-          <button className="tiny-button" onClick={onAdd}>
-            <Plus size={13} />
-            {actionLabel}
-          </button>
-        )}
       </header>
       {children}
     </section>
@@ -410,14 +357,10 @@ function InventorySection({
 }
 
 function HandSlots({
-  entityId,
   nodes,
-  onAdd,
   onEdit
 }: {
-  entityId: string;
   nodes: InventoryNode[];
-  onAdd: (target: AddTarget) => void;
   onEdit: (target: EditTarget) => void;
 }) {
   const bothHands = nodes.filter((node) => node.entry.handSlot === "both_hands");
@@ -426,13 +369,10 @@ function HandSlots({
 
   if (bothHands.length) {
     return (
-      <div className="hand-slot-grid two-hands">
+      <div className="hand-slot-stack">
         <div className="hand-slot-box occupied both-hands-occupied">
           <header>
             <span>Both hands</span>
-            <button className="icon-button" title="Both hands occupied" disabled>
-              <Plus size={13} />
-            </button>
           </header>
           <div className="hand-item-list">
             {bothHands.map((node) => (
@@ -445,21 +385,9 @@ function HandSlots({
   }
 
   return (
-    <div className="hand-slot-grid two-hands">
-      <HandSlotBox
-        label="Left"
-        node={left}
-        blockedByBoth={false}
-        onAdd={() => onAdd({ mode: "add", entityId, location: { kind: "equipped" }, handSlot: "left_hand", title: "Add to left hand" })}
-        onEdit={onEdit}
-      />
-      <HandSlotBox
-        label="Right"
-        node={right}
-        blockedByBoth={false}
-        onAdd={() => onAdd({ mode: "add", entityId, location: { kind: "equipped" }, handSlot: "right_hand", title: "Add to right hand" })}
-        onEdit={onEdit}
-      />
+    <div className="hand-slot-stack">
+      <HandSlotBox label="Left" node={left} blockedByBoth={false} onEdit={onEdit} />
+      <HandSlotBox label="Right" node={right} blockedByBoth={false} onEdit={onEdit} />
     </div>
   );
 }
@@ -468,22 +396,17 @@ function HandSlotBox({
   label,
   node,
   blockedByBoth,
-  onAdd,
   onEdit
 }: {
   label: string;
   node: InventoryNode | undefined;
   blockedByBoth: boolean;
-  onAdd: () => void;
   onEdit: (target: EditTarget) => void;
 }) {
   return (
     <div className={node ? "hand-slot-box occupied" : "hand-slot-box"}>
       <header>
         <span>{label}</span>
-        <button className="icon-button" onClick={onAdd} title={`Add to ${label.toLowerCase()}`} disabled={Boolean(node)}>
-          <Plus size={13} />
-        </button>
       </header>
       {node ? <HandItemRow node={node} blockedByBoth={blockedByBoth} onEdit={onEdit} /> : <p className="empty-row">Empty</p>}
     </div>
@@ -533,21 +456,18 @@ function HandItemRow({
 function CoinPurseList({
   entity,
   purseNodes,
-  onAdd,
   onEdit,
   onResult
 }: {
   entity: Entity;
   purseNodes: InventoryNode[];
-  onAdd: (target: AddTarget) => void;
   onEdit: (target: EditTarget) => void;
   onResult: (result: InventoryActionResult) => void;
 }) {
-  if (!purseNodes.length) return <p className="empty-row">No coin purse</p>;
   return (
     <div className="coin-purse-list">
       {purseNodes.map((node) => (
-        <CoinPurseCard key={node.entry.id} entity={entity} node={node} onAdd={onAdd} onEdit={onEdit} onResult={onResult} />
+        <CoinPurseCard key={node.entry.id} entity={entity} node={node} onEdit={onEdit} onResult={onResult} />
       ))}
     </div>
   );
@@ -556,13 +476,11 @@ function CoinPurseList({
 function CoinPurseCard({
   entity,
   node,
-  onAdd,
   onEdit,
   onResult
 }: {
   entity: Entity;
   node: InventoryNode;
-  onAdd: (target: AddTarget) => void;
   onEdit: (target: EditTarget) => void;
   onResult: (result: InventoryActionResult) => void;
 }) {
@@ -604,7 +522,7 @@ function CoinPurseCard({
           <label key={denomination}>
             {denomination.toUpperCase()}
             <input
-              type="number"
+              type="text" inputMode="numeric" pattern="[0-9]*"
               min={0}
               value={coins[denomination]}
               onChange={(event) => setDenomination(denomination, event.target.value)}
@@ -616,22 +534,6 @@ function CoinPurseCard({
         <span className={overCoinCapacity ? "warning-pill" : "quiet-pill"}>{totalCoins} total</span>
         <button className="tiny-button" onClick={() => void saveCoins()}>
           Save coins
-        </button>
-        <button
-          className="tiny-button"
-          onClick={() =>
-            onAdd({
-              mode: "add",
-              entityId: entity.id,
-              location: { kind: "contained", parentEntryId: node.entry.id },
-              handSlot: null,
-              preferredType: "treasure",
-              title: `Add small treasure to ${displayName(node.entry, catalogs, viewMode)}`
-            })
-          }
-        >
-          <Plus size={13} />
-          treasure
         </button>
       </div>
       <div className="coin-treasure-list">
@@ -666,18 +568,12 @@ function CoinPurseCard({
 
 function NodeList({
   nodes,
-  allContainerNodes,
   empty,
-  onAdd,
-  onEdit,
-  onResult
+  onEdit
 }: {
   nodes: InventoryNode[];
-  allContainerNodes: InventoryNode[];
   empty: string;
-  onAdd: (target: AddTarget) => void;
   onEdit: (target: EditTarget) => void;
-  onResult: (result: InventoryActionResult) => void;
 }) {
   if (!nodes.length) return <p className="empty-row">{empty}</p>;
   return (
@@ -687,10 +583,7 @@ function NodeList({
           key={node.entry.id}
           node={node}
           depth={0}
-          allContainerNodes={allContainerNodes}
-          onAdd={onAdd}
           onEdit={onEdit}
-          onResult={onResult}
         />
       ))}
     </div>
@@ -700,17 +593,11 @@ function NodeList({
 function InventoryNodeRow({
   node,
   depth,
-  allContainerNodes,
-  onAdd,
-  onEdit,
-  onResult
+  onEdit
 }: {
   node: InventoryNode;
   depth: number;
-  allContainerNodes: InventoryNode[];
-  onAdd: (target: AddTarget) => void;
   onEdit: (target: EditTarget) => void;
-  onResult: (result: InventoryActionResult) => void;
 }) {
   const catalogs = useCampaignStore((state) => state.catalogs);
   const viewMode = useCampaignStore((state) => state.viewMode);
@@ -721,9 +608,11 @@ function InventoryNodeRow({
   const isDepleted = node.entry.state?.isDepleted === true;
   const currentLocation: InventoryLocation = isInventoryLocation(node.entry.location) ? node.entry.location : { kind: "equipped" };
   const coins = coinBreakdownForEntry(node.entry, catalogs);
+  const isContainer = node.item.type === "container";
+  const hasRowActions = node.item.emitsLight || (node.entry.quantity > 1 && !coins);
 
   return (
-    <div className="inventory-node" style={{ "--depth": depth } as React.CSSProperties}>
+    <div className={isContainer ? "inventory-node container-node" : "inventory-node"} style={{ "--depth": depth } as React.CSSProperties}>
       <div className="inventory-row">
         <button
           className={node.children.length ? "icon-button" : "icon-button muted"}
@@ -743,93 +632,45 @@ function InventoryNodeRow({
             {node.entry.handSlot ? ` · ${node.entry.handSlot.replace("_", " ")}` : ""}
           </span>
         </div>
-        {node.item.type === "container" && (
+        {isContainer && (
           <span className={node.overCapacity ? "capacity over" : "capacity"}>
             {node.usedSlots}/{node.capacitySlots} · {node.item.container?.loadCategory ?? "stowed"}
           </span>
         )}
       </div>
-      <div className="row-actions">
-        {node.item.emitsLight && (
-          <button
-            className={node.entry.state?.isLit ? "icon-button lit" : "icon-button"}
-            onClick={() => void toggleLight(node.entry.id)}
-            title={isDepleted ? "Light source is depleted" : "Toggle light"}
-            disabled={isDepleted}
-          >
-            <Flame size={15} />
-            {isDepleted ? "Empty" : remaining === null ? "Lit" : remaining}
-          </button>
-        )}
-        {node.entry.quantity > 1 && !coins && (
-          <button className="tiny-button" onClick={() => void splitEntry(node.entry.id, Math.ceil(node.entry.quantity / 2))}>
-            Split
-          </button>
-        )}
-        {node.item.type === "container" && (
-          <button
-            className="tiny-button"
-            onClick={() =>
-              onAdd({
-                mode: "add",
-                entityId: node.entry.entityId,
-                location: { kind: "contained", parentEntryId: node.entry.id },
-                handSlot: null,
-                title: `Add inside ${displayName(node.entry, catalogs, viewMode)}`
-              })
-            }
-          >
-            <Plus size={13} />
-            item
-          </button>
-        )}
-      </div>
-      {expanded &&
-        node.children.map((child) => (
-          <InventoryNodeRow
-            key={child.entry.id}
-            node={child}
-            depth={depth + 1}
-            allContainerNodes={allContainerNodes}
-            onAdd={onAdd}
-            onEdit={onEdit}
-            onResult={onResult}
-          />
-        ))}
+      {hasRowActions && (
+        <div className="row-actions">
+          {node.item.emitsLight && (
+            <button
+              className={node.entry.state?.isLit ? "icon-button lit" : "icon-button"}
+              onClick={() => void toggleLight(node.entry.id)}
+              title={isDepleted ? "Light source is depleted" : "Toggle light"}
+              disabled={isDepleted}
+            >
+              <Flame size={15} />
+              {isDepleted ? "Empty" : remaining === null ? "Lit" : remaining}
+            </button>
+          )}
+          {node.entry.quantity > 1 && !coins && (
+            <button className="tiny-button" onClick={() => void splitEntry(node.entry.id, Math.ceil(node.entry.quantity / 2))}>
+              Split
+            </button>
+          )}
+        </div>
+      )}
+      {expanded && node.children.length > 0 && (
+        <div className="inventory-node-children">
+          {node.children.map((child) => (
+            <InventoryNodeRow
+              key={child.entry.id}
+              node={child}
+              depth={depth + 1}
+              onEdit={onEdit}
+            />
+          ))}
+        </div>
+      )}
     </div>
-  );
-}
-
-function HandSelect({
-  entityId,
-  entries,
-  ignoreEntryId,
-  value,
-  catalogs,
-  viewMode,
-  onChange
-}: {
-  entityId: string;
-  entries: InventoryEntry[];
-  ignoreEntryId?: string;
-  value: HandSlot | null;
-  catalogs: Catalogs;
-  viewMode: ViewMode;
-  onChange: (handSlot: HandSlot | null) => void;
-}) {
-  return (
-    <select value={value ?? "none"} onChange={(event) => onChange(event.target.value === "none" ? null : (event.target.value as HandSlot))} title="Hand use">
-      <option value="none">no hand</option>
-      {(["left_hand", "right_hand", "both_hands"] as HandSlot[]).map((slot) => {
-        const validation = validateHandAssignment(entityId, entries, slot, ignoreEntryId);
-        const blockers = validation.ok ? "" : ` (${validation.blockers.map((entry) => displayName(entry, catalogs, viewMode)).join(", ")})`;
-        return (
-          <option key={slot} value={slot} disabled={!validation.ok && value !== slot}>
-            {slot.replace("_", " ")}{blockers}
-          </option>
-        );
-      })}
-    </select>
   );
 }
 
@@ -847,10 +688,12 @@ function ItemModal({
   const inventoryEntries = useCampaignStore((state) => state.inventoryEntries);
   const addCustomItem = useCampaignStore((state) => state.addCustomItem);
   const updateInventoryItem = useCampaignStore((state) => state.updateInventoryItem);
+  const moveInventoryEntry = useCampaignStore((state) => state.moveInventoryEntry);
   const deleteEntry = useCampaignStore((state) => state.deleteEntry);
   const activeEntities = useMemo(() => entities.filter((entity) => entity.active), [entities]);
   const editingEntry = target.mode === "edit" ? target.entry : null;
   const isEditing = Boolean(editingEntry);
+  const currentEntry = editingEntry ? inventoryEntries.find((entry) => entry.id === editingEntry.id) ?? editingEntry : null;
   const startingItem = editingEntry ? entryItem(editingEntry, catalogs) : createBlankItem(target.mode === "add" ? target.preferredType ?? "gear" : "gear");
   const [itemId] = useState(() => editingEntry?.customItem?.id ?? `custom-${crypto.randomUUID()}`);
   const [entityId, setEntityId] = useState(editingEntry?.entityId ?? (target.mode === "add" ? target.entityId : ""));
@@ -862,8 +705,10 @@ function ItemModal({
       (target.mode === "add" && target.location.kind === "contained" ? target.location.parentEntryId : "")
   );
   const [handSlot, setHandSlot] = useState<HandSlot | null>(editingEntry?.handSlot ?? (target.mode === "add" ? target.handSlot ?? null : null));
+  const [transferOpen, setTransferOpen] = useState(false);
   const [name, setName] = useState(startingItem.name === "Custom item" ? "" : startingItem.name);
   const [type, setType] = useState<ItemType>(startingItem.type);
+  const [identified, setIdentified] = useState(startingItem.identified ?? true);
   const [description, setDescription] = useState(startingItem.description ?? "");
   const [quantity, setQuantity] = useState(editingEntry?.quantity ?? startingItem.quantity ?? 1);
   const [slotsPerUnit, setSlotsPerUnit] = useState(startingItem.slotsPerUnit ?? 0);
@@ -891,11 +736,13 @@ function ItemModal({
   const [modalMessage, setModalMessage] = useState<string | null>(null);
 
   const tree = useMemo(() => buildInventoryTree(inventoryEntries, catalogs), [inventoryEntries, catalogs]);
-  const editNode = editingEntry ? tree.allNodes.find((node) => node.entry.id === editingEntry.id) : undefined;
+  const editNode = currentEntry ? tree.allNodes.find((node) => node.entry.id === currentEntry.id) : undefined;
   const allContainerNodes = flattenNodes(tree.byEntityId[entityId] ?? []).filter((node) => node.item.type === "container");
   const containerNodes = editingEntry && editNode ? containersForMove(editNode, allContainerNodes) : allContainerNodes;
   const itemSuggestions = useMemo(() => rankItemSuggestions(catalogs.items, name).slice(0, 6), [catalogs.items, name]);
   const showSuggestions = suggestionsOpen && name.trim().length >= 2 && itemSuggestions.length > 0;
+  const selectedEntity = activeEntities.find((entity) => entity.id === entityId);
+  const transferDestination = locationKind === "contained" ? "contained" : handSlot ?? "root";
   const selectedLocation: InventoryLocation =
     locationKind === "contained" && parentEntryId
       ? { kind: "contained", parentEntryId }
@@ -910,6 +757,7 @@ function ItemModal({
   const applySuggestion = (item: ItemTemplate) => {
     setName(item.name);
     setType(item.type);
+    setIdentified(item.identified ?? true);
     setDescription(item.description ?? "");
     setQuantity(defaultInventoryQuantity(item));
     setSlotsPerUnit(item.slotsPerUnit ?? 0);
@@ -943,13 +791,56 @@ function ItemModal({
     onClose();
   };
 
+  const changeTransferDestination = (destination: string) => {
+    if (destination === "contained") {
+      setLocationKind("contained");
+      setHandSlot(null);
+      setParentEntryId(containerNodes[0]?.entry.id ?? "");
+      return;
+    }
+    setLocationKind("equipped");
+    setParentEntryId("");
+    setHandSlot(destination === "root" ? null : (destination as HandSlot));
+  };
+
+  const transferItem = async () => {
+    if (!editingEntry) return;
+    if (!entityId) {
+      setModalMessage("Choose an entity first.");
+      return;
+    }
+    if (locationKind === "contained" && !parentEntryId) {
+      setModalMessage("Choose a container first.");
+      return;
+    }
+    const transferLocation: InventoryLocation =
+      locationKind === "contained" && parentEntryId ? { kind: "contained", parentEntryId } : { kind: "equipped" };
+    const result = await moveInventoryEntry({
+      entryId: editingEntry.id,
+      entityId,
+      location: transferLocation,
+      handSlot: transferLocation.kind === "equipped" ? handSlot : null
+    });
+    if (!result.ok) {
+      setModalMessage(result.message);
+      onResult(result);
+      return;
+    }
+    setTransferOpen(false);
+    setModalMessage(null);
+    onResult(result);
+  };
+
   const saveItem = async () => {
-    if (!entityId) return;
+    const placementEntityId = currentEntry?.entityId ?? (target.mode === "add" ? entityId : "");
+    const placementLocation = currentEntry?.location ?? selectedLocation;
+    const placementHandSlot = placementLocation.kind === "equipped" ? (currentEntry ? currentEntry.handSlot ?? null : handSlot) : null;
+    if (!placementEntityId) return;
     if (!name.trim()) {
       setModalMessage("Name the item first.");
       return;
     }
-    if (locationKind === "contained" && !parentEntryId) {
+    if (!editingEntry && locationKind === "contained" && !parentEntryId) {
       setModalMessage("Choose a container first.");
       return;
     }
@@ -957,6 +848,7 @@ function ItemModal({
       id: itemId,
       name,
       type,
+      identified,
       description,
       slotsPerUnit,
       stackSize,
@@ -980,17 +872,22 @@ function ItemModal({
       durationTurnsMax,
       usesMax
     });
-    const normalizedHandSlot = selectedLocation.kind === "equipped" ? handSlot : null;
     const result = editingEntry
       ? await updateInventoryItem({
           entryId: editingEntry.id,
-          entityId,
+          entityId: placementEntityId,
+          item,
+          quantity,
+          location: placementLocation,
+          handSlot: placementHandSlot
+        })
+      : await addCustomItem({
+          entityId: placementEntityId,
           item,
           quantity,
           location: selectedLocation,
-          handSlot: normalizedHandSlot
-        })
-      : await addCustomItem({ entityId, item, quantity, location: selectedLocation, handSlot: normalizedHandSlot });
+          handSlot: selectedLocation.kind === "equipped" ? handSlot : null
+        });
     if (!result.ok) {
       setModalMessage(result.message);
       onResult(result);
@@ -1014,82 +911,98 @@ function ItemModal({
         </header>
         {modalMessage && <span className="warning-pill">{modalMessage}</span>}
         {isEditing && (
-          <div className="form-grid">
-            <label>
-              Entity
-              <select value={entityId} onChange={(event) => setEntityId(event.target.value)}>
-                {activeEntities.map((entity) => (
-                  <option key={entity.id} value={entity.id}>
-                    {entity.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="inline-fields">
-              <label>
-                Location
-                <select
-                  value={locationKind}
-                  onChange={(event) => {
-                    const nextKind = event.target.value as InventoryLocation["kind"];
-                    setLocationKind(nextKind);
-                    if (nextKind === "contained") setHandSlot(null);
-                  }}
-                >
-                  <option value="equipped">equipped</option>
-                  <option value="contained" disabled={!containerNodes.length}>inside container</option>
-                </select>
-              </label>
-              {locationKind === "equipped" ? (
-                <label>
-                  Hand
-                  <HandSelect
-                    entityId={entityId}
-                    entries={inventoryEntries}
-                    value={handSlot}
-                    catalogs={catalogs}
-                    viewMode="gm"
-                    onChange={setHandSlot}
-                  />
-                </label>
-              ) : (
-                <label>
-                  Container
-                  <select value={parentEntryId} onChange={(event) => setParentEntryId(event.target.value)}>
-                    {containerNodes.map((node) => (
-                      <option key={node.entry.id} value={node.entry.id}>
-                        {displayName(node.entry, catalogs, "gm")}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+          <section className="transfer-panel">
+            <div className="transfer-summary">
+              <span>{currentEntry ? placementSummary(currentEntry, catalogs, "gm", entities, inventoryEntries) : "Item placement unavailable"}</span>
+              <button className="tiny-button" onClick={() => setTransferOpen((open) => !open)}>
+                <ArrowRightLeft size={13} />
+                Transfer
+              </button>
             </div>
-          </div>
-        )}
-        <div className="form-grid">
-          <label className="suggestion-field">
-            Name
-            <input
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-                setSuggestionsOpen(true);
-              }}
-              autoFocus
-            />
-            {showSuggestions && (
-              <div className="suggestion-list">
-                {itemSuggestions.map((item) => (
-                  <button key={item.id} type="button" onClick={() => applySuggestion(item)}>
-                    <strong>{suggestionName(item)}</strong>
-                    <span>{suggestionSummary(item)}</span>
+            {transferOpen && (
+              <div className="form-grid transfer-fields">
+                <div className="inline-fields">
+                  <label>
+                    Entity
+                    <select
+                      value={entityId}
+                      onChange={(event) => {
+                        setEntityId(event.target.value);
+                        setLocationKind("equipped");
+                        setHandSlot(null);
+                        setParentEntryId("");
+                      }}
+                    >
+                      {activeEntities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Destination
+                    <select value={transferDestination} onChange={(event) => changeTransferDestination(event.target.value)}>
+                      <option value="root">{rootInventoryTitle(selectedEntity)}</option>
+                      {(["left_hand", "right_hand", "both_hands"] as HandSlot[]).map((slot) => {
+                        const validation = validateHandAssignment(entityId, inventoryEntries, slot, editingEntry?.id);
+                        const blockers = validation.ok ? "" : ` (${validation.blockers.map((entry) => displayName(entry, catalogs, "gm")).join(", ")})`;
+                        return (
+                          <option key={slot} value={slot} disabled={!validation.ok && transferDestination !== slot}>
+                            {slot.replace("_", " ")}{blockers}
+                          </option>
+                        );
+                      })}
+                      <option value="contained" disabled={!containerNodes.length}>inside container</option>
+                    </select>
+                  </label>
+                </div>
+                {locationKind === "contained" && (
+                  <label>
+                    Container
+                    <select value={parentEntryId} onChange={(event) => setParentEntryId(event.target.value)}>
+                      {containerNodes.map((node) => (
+                        <option key={node.entry.id} value={node.entry.id}>
+                          {displayName(node.entry, catalogs, "gm")}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <div className="transfer-actions">
+                  <button onClick={() => setTransferOpen(false)}>Cancel transfer</button>
+                  <button className="primary-action" onClick={() => void transferItem()}>
+                    <ArrowRightLeft size={15} />
+                    Move item
                   </button>
-                ))}
+                </div>
               </div>
             )}
-          </label>
-          <div className="inline-fields">
+          </section>
+        )}
+        <div className="form-grid">
+          <div className="inline-fields modal-line-1">
+            <label className="suggestion-field">
+              Name
+              <input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setSuggestionsOpen(true);
+                }}
+                autoFocus
+              />
+              {showSuggestions && (
+                <div className="suggestion-list">
+                  {itemSuggestions.map((item) => (
+                    <button key={item.id} type="button" onClick={() => applySuggestion(item)}>
+                      <strong>{suggestionName(item)}</strong>
+                      <span>{suggestionSummary(item)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </label>
             <label>
               Type
               <select value={type} onChange={(event) => setType(event.target.value as ItemType)}>
@@ -1100,32 +1013,32 @@ function ItemModal({
                 ))}
               </select>
             </label>
-            <label>
-              Qty
-              <input type="number" min={1} value={quantity} onChange={(event) => setQuantity(positiveIntegerFromInput(event.target.value, 1))} />
+            <label className="checkbox-field compact-checkbox">
+              <input type="checkbox" checked={!identified} onChange={(event) => setIdentified(!event.target.checked)} />
+              Unidentified
             </label>
           </div>
-          <div className="inline-fields three-fields">
+          <div className="inline-fields four-fields">
+            <label>
+              Qty.
+              <input type="text" inputMode="numeric" pattern="[0-9]*" min={1} value={quantity} onChange={(event) => setQuantity(positiveIntegerFromInput(event.target.value, 1))} />
+            </label>
             <label>
               Slots
-              <input type="number" min={0} value={slotsPerUnit} onChange={(event) => setSlotsPerUnit(positiveIntegerFromInput(event.target.value, 0))} />
+              <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={slotsPerUnit} onChange={(event) => setSlotsPerUnit(positiveIntegerFromInput(event.target.value, 0))} />
             </label>
             <label>
-              Stack
-              <input type="number" min={1} value={nullableInputValue(stackSize)} onChange={(event) => setStackSize(nullableIntegerFromInput(event.target.value))} />
+              Stack size
+              <input type="text" inputMode="numeric" pattern="[0-9]*" min={1} value={nullableInputValue(stackSize)} onChange={(event) => setStackSize(nullableIntegerFromInput(event.target.value))} />
             </label>
             <label>
-              GP
-              <input type="number" min={0} value={nullableInputValue(gpValue)} onChange={(event) => setGpValue(nullableIntegerFromInput(event.target.value))} />
+              Hands required
+              <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(handsRequired)} onChange={(event) => setHandsRequired(nullableIntegerFromInput(event.target.value))} />
             </label>
           </div>
           <label>
             Description
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
-          </label>
-          <label>
-            Hands required
-            <input type="number" min={0} value={nullableInputValue(handsRequired)} onChange={(event) => setHandsRequired(nullableIntegerFromInput(event.target.value))} />
           </label>
         </div>
         {type === "weapon" && (
@@ -1143,15 +1056,15 @@ function ItemModal({
             <div className="inline-fields three-fields">
               <label>
                 Short
-                <input type="number" min={0} value={nullableInputValue(weaponRangeShort)} onChange={(event) => setWeaponRangeShort(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(weaponRangeShort)} onChange={(event) => setWeaponRangeShort(nullableIntegerFromInput(event.target.value))} />
               </label>
               <label>
                 Medium
-                <input type="number" min={0} value={nullableInputValue(weaponRangeMedium)} onChange={(event) => setWeaponRangeMedium(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(weaponRangeMedium)} onChange={(event) => setWeaponRangeMedium(nullableIntegerFromInput(event.target.value))} />
               </label>
               <label>
                 Long
-                <input type="number" min={0} value={nullableInputValue(weaponRangeLong)} onChange={(event) => setWeaponRangeLong(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(weaponRangeLong)} onChange={(event) => setWeaponRangeLong(nullableIntegerFromInput(event.target.value))} />
               </label>
             </div>
           </div>
@@ -1171,11 +1084,11 @@ function ItemModal({
               </label>
               <label>
                 Base AC
-                <input type="number" min={0} value={nullableInputValue(baseAcAscending)} onChange={(event) => setBaseAcAscending(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(baseAcAscending)} onChange={(event) => setBaseAcAscending(nullableIntegerFromInput(event.target.value))} />
               </label>
               <label>
                 AC bonus
-                <input type="number" min={0} value={nullableInputValue(acBonus)} onChange={(event) => setAcBonus(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(acBonus)} onChange={(event) => setAcBonus(nullableIntegerFromInput(event.target.value))} />
               </label>
             </div>
           </div>
@@ -1185,11 +1098,11 @@ function ItemModal({
             <div className="inline-fields three-fields">
               <label>
                 Capacity
-                <input type="number" min={0} value={containerCapacity} onChange={(event) => setContainerCapacity(positiveIntegerFromInput(event.target.value, 0))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={containerCapacity} onChange={(event) => setContainerCapacity(positiveIntegerFromInput(event.target.value, 0))} />
               </label>
               <label>
                 Stowed slots
-                <input type="number" min={0} value={slotsWhenStowed} onChange={(event) => setSlotsWhenStowed(positiveIntegerFromInput(event.target.value, 0))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={slotsWhenStowed} onChange={(event) => setSlotsWhenStowed(positiveIntegerFromInput(event.target.value, 0))} />
               </label>
               <label>
                 Load
@@ -1203,7 +1116,7 @@ function ItemModal({
               </label>
               <label>
                 Coin cap
-                <input type="number" min={0} value={nullableInputValue(coinCapacity)} onChange={(event) => setCoinCapacity(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(coinCapacity)} onChange={(event) => setCoinCapacity(nullableIntegerFromInput(event.target.value))} />
               </label>
             </div>
             <label className="checkbox-field">
@@ -1219,19 +1132,31 @@ function ItemModal({
               Emits light
             </label>
             <div className="inline-fields three-fields">
-              <label>
-                Radius
-                <input type="number" min={0} value={nullableInputValue(lightRadiusFeet)} onChange={(event) => setLightRadiusFeet(nullableIntegerFromInput(event.target.value))} />
-              </label>
-              <label>
-                Turns
-                <input type="number" min={0} value={nullableInputValue(durationTurnsMax)} onChange={(event) => setDurationTurnsMax(nullableIntegerFromInput(event.target.value))} />
-              </label>
+              {emitsLight && (
+                <>
+                  <label>
+                    Radius
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(lightRadiusFeet)} onChange={(event) => setLightRadiusFeet(nullableIntegerFromInput(event.target.value))} />
+                  </label>
+                  <label>
+                    Turns
+                    <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(durationTurnsMax)} onChange={(event) => setDurationTurnsMax(nullableIntegerFromInput(event.target.value))} />
+                  </label>
+                </>
+              )}
               <label>
                 Uses
-                <input type="number" min={0} value={nullableInputValue(usesMax)} onChange={(event) => setUsesMax(nullableIntegerFromInput(event.target.value))} />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(usesMax)} onChange={(event) => setUsesMax(nullableIntegerFromInput(event.target.value))} />
               </label>
             </div>
+          </div>
+        )}
+        {type === "treasure" && (
+          <div className="form-grid type-fields">
+            <label>
+              GP value
+              <input type="text" inputMode="numeric" pattern="[0-9]*" min={0} value={nullableInputValue(gpValue)} onChange={(event) => setGpValue(nullableIntegerFromInput(event.target.value))} />
+            </label>
           </div>
         )}
         <footer>
@@ -1258,6 +1183,7 @@ type ItemDraftFields = {
   id: string;
   name: string;
   type: ItemType;
+  identified: boolean;
   description: string;
   slotsPerUnit: number;
   stackSize: number | null;
@@ -1310,7 +1236,7 @@ function buildItemTemplate(fields: ItemDraftFields): ItemTemplate {
   const item: ItemTemplate = {
     id: fields.id,
     type: fields.type,
-    identified: true,
+    identified: fields.identified,
     name: fields.name.trim(),
     description: fields.description.trim() || undefined,
     quantity: 1,
@@ -1321,7 +1247,7 @@ function buildItemTemplate(fields: ItemDraftFields): ItemTemplate {
     lightRadiusFeet: fields.type === "gear" && fields.emitsLight ? fields.lightRadiusFeet : null,
     cursed: false,
     curseDescription: null,
-    gpValue: fields.gpValue
+    gpValue: fields.type === "treasure" ? fields.gpValue : null
   };
 
   if (fields.type === "weapon") {
@@ -1496,11 +1422,24 @@ function containersForMove(node: InventoryNode, allContainerNodes: InventoryNode
   return allContainerNodes.filter((containerNode) => !blockedIds.has(containerNode.entry.id));
 }
 
-function firstFreeHandSlot(entityId: string, nodes: InventoryNode[]): HandSlot | null {
-  const entries = flattenNodes(nodes).map((node) => node.entry);
-  if (validateHandAssignment(entityId, entries, "right_hand").ok) return "right_hand";
-  if (validateHandAssignment(entityId, entries, "left_hand").ok) return "left_hand";
-  return null;
+function rootInventoryTitle(entity: Entity | undefined): string {
+  return entity && adventurerTypes.has(entity.type) ? "Equipped" : "Inventory";
+}
+
+function rootInventoryEmptyLabel(entity: Entity): string {
+  return adventurerTypes.has(entity.type) ? "Nothing equipped" : "No loose inventory";
+}
+
+function placementSummary(entry: InventoryEntry, catalogs: Catalogs, viewMode: ViewMode, entities: Entity[], entries: InventoryEntry[]): string {
+  const entityName = entities.find((entity) => entity.id === entry.entityId)?.name ?? "Unknown entity";
+  const itemLocation: InventoryLocation = isInventoryLocation(entry.location) ? entry.location : { kind: "equipped" };
+  if (itemLocation.kind === "contained") {
+    const parentEntry = entries.find((candidate) => candidate.id === itemLocation.parentEntryId);
+    const parentName = parentEntry ? displayName(parentEntry, catalogs, viewMode) : "container";
+    return `${entityName} · inside ${parentName}`;
+  }
+  if (entry.handSlot) return `${entityName} · ${entry.handSlot.replace("_", " ")}`;
+  return `${entityName} · ${rootInventoryTitle(entities.find((entity) => entity.id === entry.entityId))}`;
 }
 
 function locationLabel(location: InventoryLocation): string {
