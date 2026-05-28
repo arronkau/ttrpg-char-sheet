@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ItemTemplate } from "../types";
+import type { Entity, ItemTemplate } from "../types";
 import { entryItem } from "../lib/rules";
 import { useCampaignStore } from "./campaignStore";
 
@@ -265,6 +265,127 @@ describe("campaign inventory item actions", () => {
   });
 });
 
+describe("campaign entity actions", () => {
+  beforeEach(() => {
+    vi.stubGlobal("localStorage", createMemoryStorage());
+    vi.stubGlobal("window", {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    });
+  });
+
+  it("creates a character with active state, timestamps, and next sort order", async () => {
+    await initializeStore();
+
+    await useCampaignStore.getState().addEntity({
+      type: "character",
+      name: "Nessa",
+      playerName: "Player 3",
+      classId: "fighter",
+      xp: 125,
+      alignment: "lawful",
+      languages: ["Common"],
+      abilities: defaultAbilities(),
+      hp: { currentHp: 5, maxHp: 5 },
+      notes: { publicNotes: "Carries chalk." }
+    });
+
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.name === "Nessa");
+
+    expect(entity?.active).toBe(true);
+    expect(entity?.sortOrder).toBe(40);
+    expect(entity?.createdAt).toBeTruthy();
+    expect(entity?.updatedAt).toBeTruthy();
+    expect(entity?.hp).toEqual({ currentHp: 5, maxHp: 5 });
+  });
+
+  it("creates retainers and hirelings with attachment and pay logistics", async () => {
+    await initializeStore();
+
+    await useCampaignStore.getState().addEntity({
+      type: "retainer",
+      name: "Old Hob",
+      logistics: {
+        attachedToEntityId: "entity-mira",
+        gpPerDay: 2,
+        treasureSharePercent: 15
+      },
+      abilities: defaultAbilities(),
+      hp: { currentHp: 3, maxHp: 3 }
+    });
+
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.name === "Old Hob");
+    expect(entity?.logistics?.attachedToEntityId).toBe("entity-mira");
+    expect(entity?.logistics?.gpPerDay).toBe(2);
+    expect(entity?.logistics?.treasureSharePercent).toBe(15);
+  });
+
+  it("creates mounts with capacity and movement logistics", async () => {
+    await initializeStore();
+
+    await useCampaignStore.getState().addEntity({
+      type: "mount",
+      name: "Pack Mule",
+      logistics: {
+        capacitySlots: 20,
+        movementExploration: 180,
+        movementEncounter: 60
+      }
+    });
+
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.name === "Pack Mule");
+    expect(entity?.logistics?.capacitySlots).toBe(20);
+    expect(entity?.logistics?.movementExploration).toBe(180);
+    expect(entity?.logistics?.movementEncounter).toBe(60);
+  });
+
+  it("retires an entity without removing its inventory", async () => {
+    await initializeStore();
+    const beforeIds = useCampaignStore
+      .getState()
+      .inventoryEntries.filter((entry) => entry.entityId === "entity-mira")
+      .map((entry) => entry.id)
+      .sort();
+
+    await useCampaignStore.getState().retireEntity("entity-mira");
+
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.id === "entity-mira");
+    const afterIds = useCampaignStore
+      .getState()
+      .inventoryEntries.filter((entry) => entry.entityId === "entity-mira")
+      .map((entry) => entry.id)
+      .sort();
+
+    expect(entity?.active).toBe(false);
+    expect(afterIds).toEqual(beforeIds);
+  });
+
+  it("restores a retired entity", async () => {
+    await initializeStore();
+
+    await useCampaignStore.getState().retireEntity("entity-mira");
+    await useCampaignStore.getState().restoreEntity("entity-mira");
+
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.id === "entity-mira");
+    expect(entity?.active).toBe(true);
+  });
+
+  it("updates character fields while preserving unrelated nested data", async () => {
+    await initializeStore();
+    const entity = useCampaignStore.getState().entities.find((candidate) => candidate.id === "entity-mira") as Entity;
+
+    await useCampaignStore.getState().updateEntity({
+      ...entity,
+      hp: { currentHp: 3, maxHp: entity.hp?.maxHp ?? 4 }
+    });
+
+    const updated = useCampaignStore.getState().entities.find((candidate) => candidate.id === "entity-mira");
+    expect(updated?.hp?.currentHp).toBe(3);
+    expect(updated?.notes?.publicNotes).toBe("Keeps the map dry.");
+    expect(updated?.spellcasting?.spellbookSpellIds).toEqual(["read-magic", "shield", "sleep"]);
+  });
+});
+
 async function initializeStore() {
   await useCampaignStore.getState().initialize(`store-test-${crypto.randomUUID()}`);
 }
@@ -286,6 +407,17 @@ function customItem(overrides: Partial<ItemTemplate>): ItemTemplate {
     curseDescription: null,
     gpValue: null,
     ...overrides
+  };
+}
+
+function defaultAbilities() {
+  return {
+    strength: 10,
+    intelligence: 10,
+    wisdom: 10,
+    dexterity: 10,
+    constitution: 10,
+    charisma: 10
   };
 }
 

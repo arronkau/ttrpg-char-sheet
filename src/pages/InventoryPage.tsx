@@ -81,7 +81,8 @@ export function InventoryPage() {
   const inventoryEntries = useCampaignStore((state) => state.inventoryEntries);
   const viewMode = useCampaignStore((state) => state.viewMode);
   const spendTurn = useCampaignStore((state) => state.spendTurn);
-  const updateEntity = useCampaignStore((state) => state.updateEntity);
+  const retireEntity = useCampaignStore((state) => state.retireEntity);
+  const restoreEntity = useCampaignStore((state) => state.restoreEntity);
   const [query, setQuery] = useState("");
   const [itemModalTarget, setItemModalTarget] = useState<ItemModalTarget | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -140,7 +141,7 @@ export function InventoryPage() {
             summary={summaries[entity.id]}
             onAdd={setItemModalTarget}
             onEdit={setItemModalTarget}
-            onHide={() => void updateEntity({ ...entity, active: false })}
+            onHide={() => void retireEntity(entity.id)}
             onResult={handleResult}
           />
         ))}
@@ -175,8 +176,8 @@ export function InventoryPage() {
                       <strong>{entity.name}</strong>
                       <span>{entity.type}</span>
                     </div>
-                    <span className="capacity">{summaries[entity.id]?.carriedSlots ?? 0} slots</span>
-                    <button className="icon-button" onClick={() => void updateEntity({ ...entity, active: false })} title="Hide">
+                    <span className="capacity">{loadSummary(summaries[entity.id])}</span>
+                    <button className="icon-button" onClick={() => void retireEntity(entity.id)} title="Hide">
                       <EyeOff size={15} />
                     </button>
                   </header>
@@ -210,7 +211,7 @@ export function InventoryPage() {
                 <span>
                   <strong>{entity.name}</strong> · {entity.type}
                 </span>
-                <button className="small-button" onClick={() => void updateEntity({ ...entity, active: true })}>
+                <button className="small-button" onClick={() => void restoreEntity(entity.id)}>
                   <Undo2 size={14} />
                   Show
                 </button>
@@ -257,7 +258,7 @@ function InventoryCard({
         <span>Move {summary.movementExploration}/{summary.movementEncounter}</span>
         <span>Eq {summary.equippedSlots}</span>
         <span>St {summary.stowedSlots}</span>
-        <span>Total {summary.carriedSlots}</span>
+        <span>Total {loadSummary(summary)}</span>
       </div>
       <EntityInventorySections entity={entity} nodes={nodes} onAdd={onAdd} onEdit={onEdit} onResult={onResult} />
     </article>
@@ -847,6 +848,7 @@ function ItemModal({
   const addCustomItem = useCampaignStore((state) => state.addCustomItem);
   const updateInventoryItem = useCampaignStore((state) => state.updateInventoryItem);
   const deleteEntry = useCampaignStore((state) => state.deleteEntry);
+  const activeEntities = useMemo(() => entities.filter((entity) => entity.active), [entities]);
   const editingEntry = target.mode === "edit" ? target.entry : null;
   const isEditing = Boolean(editingEntry);
   const startingItem = editingEntry ? entryItem(editingEntry, catalogs) : createBlankItem(target.mode === "add" ? target.preferredType ?? "gear" : "gear");
@@ -1016,7 +1018,7 @@ function ItemModal({
             <label>
               Entity
               <select value={entityId} onChange={(event) => setEntityId(event.target.value)}>
-                {entities.map((entity) => (
+                {activeEntities.map((entity) => (
                   <option key={entity.id} value={entity.id}>
                     {entity.name}
                   </option>
@@ -1503,4 +1505,10 @@ function firstFreeHandSlot(entityId: string, nodes: InventoryNode[]): HandSlot |
 
 function locationLabel(location: InventoryLocation): string {
   return isInventoryLocation(location) && location.kind === "contained" ? "inside" : "equipped";
+}
+
+function loadSummary(summary: ReturnType<typeof summarizeEntity> | undefined): string {
+  if (!summary) return "0 slots";
+  const capacity = summary.capacitySlots !== null && summary.capacitySlots !== undefined ? `/${summary.capacitySlots}` : "";
+  return `${summary.carriedSlots}${capacity} slots`;
 }

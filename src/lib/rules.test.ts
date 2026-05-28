@@ -71,6 +71,35 @@ describe("slot and encumbrance rules", () => {
     expect(movementForSlots(6).movementEncounter).toBe(30);
     expect(movementForSlots(21).overloaded).toBe(true);
   });
+
+  it("uses mount and vehicle logistics for capacity and movement", () => {
+    const mule = {
+      id: "mule",
+      type: "mount",
+      name: "Mule",
+      active: true,
+      sortOrder: 1,
+      logistics: {
+        capacitySlots: 2,
+        movementExploration: 180,
+        movementEncounter: 60
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp
+    } satisfies Entity;
+    const entries = [
+      inventory("backpack", mule.id, "item_backpack_001", 1, { kind: "equipped" }),
+      inventory("chain", mule.id, "item_chainmail_068", 1, { kind: "equipped" })
+    ];
+
+    const summary = summarizeEntity(mule, entries, catalogs, "gm");
+
+    expect(summary.capacitySlots).toBe(2);
+    expect(summary.movementExploration).toBe(180);
+    expect(summary.movementEncounter).toBe(60);
+    expect(summary.overloaded).toBe(true);
+    expect(summary.warnings.some((warning) => warning.message.includes("3/2 slots"))).toBe(true);
+  });
 });
 
 describe("inventory tree behavior", () => {

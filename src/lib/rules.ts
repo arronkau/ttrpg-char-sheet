@@ -371,6 +371,51 @@ export function movementForSlots(slots: number) {
   };
 }
 
+function entityCapacitySlots(entity: Entity): number | null {
+  const capacity = entity.logistics?.capacitySlots;
+  return capacity !== null && capacity !== undefined && Number.isFinite(capacity) ? Math.max(0, Math.floor(capacity)) : null;
+}
+
+function entityMovement(entity: Entity, carriedSlots: number, overEntityCapacity: boolean) {
+  const configuredExploration = entity.logistics?.movementExploration;
+  const configuredEncounter = entity.logistics?.movementEncounter;
+  const hasConfiguredMovement =
+    (entity.type === "mount" || entity.type === "vehicle") &&
+    configuredExploration !== null &&
+    configuredExploration !== undefined &&
+    Number.isFinite(configuredExploration);
+
+  if (hasConfiguredMovement) {
+    const movementExploration = Math.max(0, Math.floor(configuredExploration));
+    const movementEncounter =
+      configuredEncounter !== null && configuredEncounter !== undefined && Number.isFinite(configuredEncounter)
+        ? Math.max(0, Math.floor(configuredEncounter))
+        : Math.floor(movementExploration / 3);
+    return {
+      carriedSlots,
+      movementExploration,
+      movementEncounter,
+      encumbranceLabel: overEntityCapacity ? "Over capacity" : "Vehicle/mount",
+      overloaded: overEntityCapacity
+    };
+  }
+
+  if (entity.type === "storage") {
+    return {
+      carriedSlots,
+      movementExploration: 0,
+      movementEncounter: 0,
+      encumbranceLabel: overEntityCapacity ? "Over capacity" : "Storage",
+      overloaded: overEntityCapacity
+    };
+  }
+
+  const movement = movementForSlots(carriedSlots);
+  return overEntityCapacity
+    ? { ...movement, encumbranceLabel: "Over capacity", overloaded: true }
+    : movement;
+}
+
 export function durationTurns(entry: InventoryEntry, item: ItemTemplate): { max: number | null; used: number } {
   const max = entry.state?.durationTurnsMax ?? item.gear?.durationTurnsMax ?? null;
   const used = entry.state?.durationTurnsUsed ?? item.gear?.durationTurnsUsed ?? 0;
@@ -463,7 +508,9 @@ export function summarizeEntity(
   const classDef = entity.classId ? catalogs.classesById[entity.classId] : undefined;
   const levelData = classLevelData(classDef, entity.xp);
   const load = entityLoadBreakdown(entity.id, entries, catalogs);
-  const movement = movementForSlots(load.carriedSlots);
+  const capacitySlots = entityCapacitySlots(entity);
+  const overEntityCapacity = capacitySlots !== null && load.carriedSlots > capacitySlots;
+  const movement = entityMovement(entity, load.carriedSlots, overEntityCapacity);
   const entityEntries = entries.filter((entry) => entry.entityId === entity.id);
   const activeLights = entityEntries.filter((entry) => isActiveLight(entry, catalogs)).map((entry) => {
     const item = entryItem(entry, catalogs);
@@ -523,7 +570,9 @@ export function summarizeEntity(
     warnings.push({
       severity: "warning",
       source: "houseRule",
-      message: `${entity.name} is overloaded.`
+      message: overEntityCapacity
+        ? `${entity.name} is over capacity (${load.carriedSlots}/${capacitySlots} slots).`
+        : `${entity.name} is overloaded.`
     });
   }
   if (["character", "retainer", "hireling"].includes(entity.type) && entity.hp && entity.hp.currentHp <= 0) {
@@ -543,6 +592,7 @@ export function summarizeEntity(
     savingThrows: levelData?.saving_throws,
     equippedSlots: load.equippedSlots,
     stowedSlots: load.stowedSlots,
+    capacitySlots,
     ...movement,
     activeLights,
     warnings

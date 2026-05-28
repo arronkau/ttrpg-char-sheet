@@ -25,6 +25,7 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
   const catalogs = useCampaignStore((state) => state.catalogs);
   const viewMode = useCampaignStore((state) => state.viewMode);
   const entities = useCampaignStore((state) => state.entities);
+  const activeEntities = entities.filter((candidate) => candidate.active);
   const moveInventoryEntry = useCampaignStore((state) => state.moveInventoryEntry);
   const splitEntry = useCampaignStore((state) => state.splitEntry);
   const toggleLight = useCampaignStore((state) => state.toggleLight);
@@ -73,7 +74,7 @@ function TreeNode({ node, entity, depth }: { node: InventoryNode; entity: Entity
           }
           title="Transfer to entity"
         >
-          {entities.map((candidate) => (
+          {activeEntities.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
               {candidate.name}
             </option>

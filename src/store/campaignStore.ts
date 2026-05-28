@@ -46,6 +46,8 @@ type CampaignState = {
   setViewMode: (mode: ViewMode) => Promise<void>;
   updateEntity: (entity: Entity) => Promise<void>;
   addEntity: (entity: Omit<Entity, "id" | "createdAt" | "updatedAt" | "active" | "sortOrder">) => Promise<void>;
+  retireEntity: (entityId: string) => Promise<void>;
+  restoreEntity: (entityId: string) => Promise<void>;
   addCatalogItem: (input: {
     entityId: string;
     itemTemplateId: string;
@@ -182,6 +184,18 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const nextCampaign = { ...campaign, updatedAt: timestamp };
     set((state) => ({ entities: [...state.entities, entity], campaign: nextCampaign }));
     await Promise.all([repository.saveEntity(campaignId, entity), repository.saveCampaign(nextCampaign)]);
+  },
+
+  async retireEntity(entityId) {
+    const entity = get().entities.find((candidate) => candidate.id === entityId);
+    if (!entity || !entity.active) return;
+    await get().updateEntity({ ...entity, active: false });
+  },
+
+  async restoreEntity(entityId) {
+    const entity = get().entities.find((candidate) => candidate.id === entityId);
+    if (!entity || entity.active) return;
+    await get().updateEntity({ ...entity, active: true });
   },
 
   async addCatalogItem({ entityId, itemTemplateId, quantity, location, handSlot = null }) {

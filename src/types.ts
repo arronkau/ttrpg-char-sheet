@@ -34,6 +34,15 @@ export type HitPoints = {
   temporaryHp?: number;
 };
 
+export type EntityLogistics = {
+  attachedToEntityId?: string | null;
+  gpPerDay?: number | null;
+  treasureSharePercent?: number | null;
+  capacitySlots?: number | null;
+  movementExploration?: number | null;
+  movementEncounter?: number | null;
+};
+
 export type CampaignSettings = {
   viewMode: ViewMode;
   encumbranceMethod: "slots";
@@ -59,6 +68,7 @@ export type Entity = {
   hp?: HitPoints;
   alignment?: string;
   languages?: string[];
+  logistics?: EntityLogistics;
   combatState?: {
     activeConditions?: Array<{ id: string; name: string; description?: string }>;
     wounds?: string | null;
@@ -265,6 +275,7 @@ export type EntitySummary = {
   equippedSlots: number;
   stowedSlots: number;
   carriedSlots: number;
+  capacitySlots?: number | null;
   movementExploration: number;
   movementEncounter: number;
   encumbranceLabel: string;

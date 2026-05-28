@@ -589,6 +589,86 @@ h3 {
   width: min(720px, 100%);
 }
 
+.modal-panel.entity-modal {
+  width: min(880px, 100%);
+}
+
+.entity-manager-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(360px, 1.3fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.entity-manager-list,
+.entity-editor {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.entity-manager-list {
+  align-content: start;
+}
+
+.entity-list-section {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e7ddcb;
+}
+
+.entity-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.entity-list-row > button:first-child {
+  min-width: 0;
+  display: grid;
+  justify-items: start;
+  justify-content: stretch;
+  gap: 0.1rem;
+  text-align: left;
+}
+
+.entity-list-row strong,
+.entity-list-row span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entity-list-row span {
+  color: #6a6255;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.entity-list-row.selected > button:first-child {
+  border-color: #2e6658;
+  background: #e4eddf;
+}
+
+.entity-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.entity-editor-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.full-width {
+  width: 100%;
+}
+
 .segmented-control {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1101,6 +1181,14 @@ h3 {
   }
 
   .topbar {
+    display: grid;
+  }
+
+  .entity-manager-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-editor-actions {
     display: grid;
   }
 

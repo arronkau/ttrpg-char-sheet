@@ -56,7 +56,10 @@ export function PartyPage() {
                     {summary.entity.hp ? `${summary.entity.hp.currentHp}/${summary.entity.hp.maxHp}` : "—"}
                   </td>
                   <td>{summary.movementExploration}/{summary.movementEncounter}</td>
-                  <td>{summary.carriedSlots} · {summary.encumbranceLabel}</td>
+                  <td>
+                    {summary.carriedSlots}
+                    {summary.capacitySlots !== null && summary.capacitySlots !== undefined ? `/${summary.capacitySlots}` : ""} · {summary.encumbranceLabel}
+                  </td>
                   <td>
                     {summary.activeLights.length ? (
                       summary.activeLights.map((light) => (

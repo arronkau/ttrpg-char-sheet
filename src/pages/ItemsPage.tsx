@@ -1,5 +1,5 @@
 import { Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { itemSearchText } from "../lib/catalogs";
 import { useCampaignStore } from "../store/campaignStore";
 import type { ItemType } from "../types";
@@ -11,6 +11,7 @@ export function ItemsPage() {
   const [query, setQuery] = useState("");
   const [type, setType] = useState<ItemType | "all">("all");
   const [entityId, setEntityId] = useState(entities[0]?.id ?? "");
+  const activeEntities = useMemo(() => entities.filter((entity) => entity.active), [entities]);
 
   const filteredItems = useMemo(
     () =>
@@ -21,6 +22,12 @@ export function ItemsPage() {
       }),
     [catalogs.items, query, type]
   );
+
+  useEffect(() => {
+    if (!activeEntities.some((entity) => entity.id === entityId)) {
+      setEntityId(activeEntities[0]?.id ?? "");
+    }
+  }, [activeEntities, entityId]);
 
   return (
     <main className="page-stack">
@@ -41,8 +48,8 @@ export function ItemsPage() {
             <option value="gear">gear</option>
             <option value="container">container</option>
           </select>
-          <select value={entityId} onChange={(event) => setEntityId(event.target.value)}>
-            {entities.map((entity) => (
+          <select value={entityId} onChange={(event) => setEntityId(event.target.value)} disabled={!activeEntities.length}>
+            {activeEntities.map((entity) => (
               <option key={entity.id} value={entity.id}>
                 {entity.name}
               </option>
@@ -71,6 +78,7 @@ export function ItemsPage() {
                       handSlot: null
                     })
                   }
+                  disabled={!entityId}
                   title="Add item"
                 >
                   <Plus size={16} />
