@@ -1488,3 +1488,332 @@ h3 {
     padding-left: calc(0.25rem + var(--depth) * 0.75rem);
   }
 }
+
+/* Character sheet: OSE-inspired table layout. Scoped to CharacterPage. */
+.sheet-page {
+  grid-template-columns: minmax(760px, 1fr) minmax(280px, 0.28fr);
+  align-items: start;
+}
+
+.sheet-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sheet-toolbar label {
+  width: min(340px, 100%);
+}
+
+.ose-sheet {
+  min-width: 0;
+  padding: 1rem;
+  border: 2px solid #2f2b25;
+  border-radius: 4px;
+  background: #fffdf8;
+  box-shadow: 0 12px 30px rgba(43, 36, 26, 0.08);
+}
+
+.sheet-identity-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 0.45fr 0.65fr;
+  gap: 0.6rem 0.75rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 2px solid #2f2b25;
+}
+
+.sheet-grid-main {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.25fr);
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.sheet-box {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1.5px solid #2f2b25;
+  background: #fffefa;
+}
+
+.sheet-box h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.abilities-box,
+.combat-box,
+.movement-box,
+.saves-box,
+.skills-box {
+  grid-column: 1;
+}
+
+.features-box,
+.inventory-sheet-box {
+  grid-column: 2;
+}
+
+.features-box {
+  grid-row: 1 / span 3;
+  min-height: 310px;
+}
+
+.inventory-sheet-box {
+  grid-row: 4 / span 3;
+}
+
+.sheet-field {
+  display: grid;
+  gap: 0.2rem;
+  color: #2f2b25;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sheet-field span {
+  color: #2f2b25;
+}
+
+.sheet-field input,
+.sheet-field select,
+.sheet-field output {
+  min-height: 34px;
+  border-width: 0 0 1.5px 0;
+  border-color: #2f2b25;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.sheet-field output {
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.55rem;
+}
+
+.ability-table,
+.skill-table,
+.feature-text,
+.sheet-inventory-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ability-table-head,
+.ability-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 72px 60px;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ability-table-head {
+  color: #676054;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ability-row span {
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.ability-row em {
+  float: right;
+  color: #777064;
+  font-size: 0.7rem;
+  font-style: normal;
+}
+
+.ability-row input,
+.ability-row output {
+  min-height: 32px;
+  border: 1px solid #2f2b25;
+  border-radius: 0;
+  background: #fffdf8;
+  text-align: center;
+  font-weight: 900;
+}
+
+.ability-row output {
+  display: grid;
+  place-items: center;
+}
+
+.combat-grid,
+.movement-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.sheet-save-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.sheet-save-grid > div {
+  border-color: #2f2b25;
+  border-radius: 0;
+  background: #fffdf8;
+}
+
+.skill-table > div,
+.sheet-inventory-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 30px;
+  padding: 0.25rem 0.35rem;
+  border-bottom: 1px solid #cfc6b4;
+}
+
+.skill-table span,
+.sheet-inventory-list span {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-table strong,
+.sheet-inventory-list small {
+  color: #676054;
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.sheet-subhead,
+.sheet-help {
+  color: #5f574c;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sheet-help {
+  margin-top: 0.55rem;
+}
+
+.feature-text {
+  max-height: 210px;
+  overflow: auto;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem;
+  border: 1px solid #cfc6b4;
+  background: #fffaf0;
+  color: #312d27;
+  font-size: 0.82rem;
+  line-height: 1.38;
+}
+
+.notes-block {
+  margin-top: 0.6rem;
+  color: #2f2b25;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.notes-block textarea {
+  min-height: 86px;
+  border-radius: 0;
+}
+
+.inventory-sheet-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 1fr) minmax(220px, 1.2fr);
+  gap: 0.65rem;
+}
+
+.sheet-inventory-list h4 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.load-track {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  color: #676054;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-align: center;
+}
+
+.load-track span {
+  border-top: 2px solid #2f2b25;
+  padding-top: 0.25rem;
+}
+
+.sheet-sidebar {
+  position: sticky;
+  top: 1rem;
+}
+
+.todo-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: #5b5549;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.warning-note {
+  padding: 0.55rem;
+  border: 1px solid #cf9d94;
+  background: #fff1ee;
+  color: #7b3027;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .sheet-page,
+  .sheet-grid-main {
+    grid-template-columns: 1fr;
+  }
+
+  .features-box,
+  .inventory-sheet-box,
+  .abilities-box,
+  .combat-box,
+  .movement-box,
+  .saves-box,
+  .skills-box {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .sheet-sidebar {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .sheet-toolbar,
+  .sheet-identity-grid,
+  .inventory-sheet-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .combat-grid,
+  .movement-grid,
+  .sheet-save-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
