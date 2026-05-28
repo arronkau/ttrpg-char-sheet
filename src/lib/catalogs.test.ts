@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCatalogs, classNameToId, defaultInventoryQuantity, normalizeSpellClassId } from "./catalogs";
+import { loadSpellCatalog } from "./spellCatalog";
 
 describe("catalog normalization", () => {
   it("creates stable class ids from display names", () => {
@@ -13,13 +14,19 @@ describe("catalog normalization", () => {
     expect(normalizeSpellClassId("illusionist")).toBe("illusionist");
   });
 
-  it("loads the bundled reference catalogs", () => {
+  it("loads the bundled core reference catalogs", () => {
     const catalogs = buildCatalogs();
     expect(catalogs.classesById["magic-user"].class_name).toBe("Magic-User");
     expect(catalogs.itemsById["item_backpack_001"].container?.capacitySlots).toBeGreaterThan(0);
     expect(catalogs.itemsById["item_belt_pouch_005"].container?.coinCapacity).toBe(100);
-    expect(catalogs.spells.length).toBeGreaterThan(100);
-    expect(catalogs.spells.every((spell) => spell.normalizedClasses.length > 0)).toBe(true);
+  });
+
+  it("loads and derives the async spell catalog", async () => {
+    const spellCatalog = await loadSpellCatalog();
+    expect(spellCatalog.spells.length).toBeGreaterThan(100);
+    expect(spellCatalog.spells.every((spell) => spell.normalizedClasses.length > 0)).toBe(true);
+    expect(spellCatalog.spellsById["acid-arrow"].searchText).toContain("acid arrow");
+    expect(spellCatalog.spellsById["acid-arrow"].classSummary).toContain("magic-user 2");
   });
 
   it("defaults stackable standard items to a full stack", () => {

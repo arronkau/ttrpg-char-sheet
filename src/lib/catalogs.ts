@@ -1,7 +1,6 @@
 import rawClasses from "../../data/ose_af_classes_v3.json";
 import rawItems from "../../data/ose_equipment_items_spec_v2.json";
-import rawSpells from "../../data/av_converted_spells_character_app.json";
-import type { Catalogs, ClassDefinition, ItemTemplate, SpellReference } from "../types";
+import type { Catalogs, ClassDefinition, ItemTemplate } from "../types";
 
 type ClassesFile = {
   classes: Array<Omit<ClassDefinition, "id"> & { id?: string }>;
@@ -9,10 +8,6 @@ type ClassesFile = {
 
 type ItemsFile = {
   items: ItemTemplate[];
-};
-
-type SpellsFile = {
-  spells: Array<Omit<SpellReference, "normalizedClasses">>;
 };
 
 export function classNameToId(name: string): string {
@@ -55,23 +50,11 @@ export function buildCatalogs(): Catalogs {
 
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
 
-  const spells = (rawSpells as unknown as SpellsFile).spells.map((spell) => ({
-    ...spell,
-    normalizedClasses: spell.classes.map((spellClass) => ({
-      classId: normalizeSpellClassId(spellClass.class),
-      level: spellClass.level
-    }))
-  }));
-
-  const spellsById = Object.fromEntries(spells.map((spell) => [spell.id, spell]));
-
   return {
     classes,
     classesById,
     items,
-    itemsById,
-    spells,
-    spellsById
+    itemsById
   };
 }
 

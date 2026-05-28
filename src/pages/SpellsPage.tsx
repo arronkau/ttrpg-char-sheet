@@ -1,17 +1,36 @@
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useCampaignStore } from "../store/campaignStore";
-
-function spellClassSummary(spell: { normalizedClasses: Array<{ classId: string; level: number }> }): string {
-  return spell.normalizedClasses.map((spellClass) => `${spellClass.classId} ${spellClass.level}`).join(", ");
-}
+import { useEffect, useMemo, useState } from "react";
+import { loadSpellCatalog } from "../lib/spellCatalog";
+import type { SpellCatalogEntry } from "../types";
 
 export function SpellsPage() {
-  const spells = useCampaignStore((state) => state.catalogs.spells);
+  const [spells, setSpells] = useState<SpellCatalogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [classId, setClassId] = useState("all");
   const [level, setLevel] = useState("all");
   const [adaptation, setAdaptation] = useState("all");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    loadSpellCatalog()
+      .then((catalog) => {
+        if (!active) return;
+        setSpells(catalog.spells);
+        setLoading(false);
+      })
+      .catch((loadError: unknown) => {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : "Unable to load spells.");
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const classOptions = useMemo(
     () => Array.from(new Set(spells.flatMap((spell) => spell.normalizedClasses.map((spellClass) => spellClass.classId)))).sort(),
@@ -24,29 +43,17 @@ export function SpellsPage() {
   );
 
   const filteredSpells = useMemo(
-    () =>
-      spells.filter((spell) => {
-        const text = [
-          spell.name,
-          spell.description,
-          spell.source,
-          spell.range,
-          spell.duration,
-          spell.save,
-          spell.area,
-          spell.target,
-          spellClassSummary(spell)
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        const matchesQuery = text.includes(query.toLowerCase());
+    () => {
+      const normalizedQuery = query.toLowerCase();
+      return spells.filter((spell) => {
+        const matchesQuery = spell.searchText.includes(normalizedQuery);
         const matchesClass = classId === "all" || spell.normalizedClasses.some((spellClass) => spellClass.classId === classId);
         const matchesLevel = level === "all" || spell.normalizedClasses.some((spellClass) => String(spellClass.level) === level);
         const matchesAdaptation =
           adaptation === "all" || (adaptation === "adapted" && spell.isAdapted) || (adaptation === "standard" && !spell.isAdapted);
         return matchesQuery && matchesClass && matchesLevel && matchesAdaptation;
-      }),
+      });
+    },
     [adaptation, classId, level, query, spells]
   );
 
@@ -97,7 +104,9 @@ export function SpellsPage() {
             </select>
           </label>
         </div>
-        <div className="reference-results-summary">{filteredSpells.length} spells</div>
+        {loading ? <p className="empty-row">Loading spells</p> : null}
+        {error ? <p className="empty-row">{error}</p> : null}
+        {!loading && !error ? <div className="reference-results-summary">{filteredSpells.length} spells</div> : null}
         <div className="reference-row-list">
           {filteredSpells.map((spell) => (
             <article className="reference-row" key={spell.id}>
@@ -105,7 +114,7 @@ export function SpellsPage() {
                 <header>
                   <h3>{spell.name}</h3>
                   <div className="metadata-pills">
-                    <span>{spellClassSummary(spell)}</span>
+                    <span>{spell.classSummary}</span>
                     <span>Range {spell.range ?? "—"}</span>
                     <span>Duration {spell.duration ?? "—"}</span>
                     <span>Save {spell.save ?? "—"}</span>

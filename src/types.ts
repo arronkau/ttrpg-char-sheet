@@ -249,13 +249,21 @@ export type SpellReference = {
   originalText?: unknown;
 };
 
+export type SpellCatalogEntry = SpellReference & {
+  classSummary: string;
+  searchText: string;
+};
+
+export type SpellCatalog = {
+  spells: SpellCatalogEntry[];
+  spellsById: Record<string, SpellCatalogEntry>;
+};
+
 export type Catalogs = {
   classes: ClassDefinition[];
   classesById: Record<string, ClassDefinition>;
   items: ItemTemplate[];
   itemsById: Record<string, ItemTemplate>;
-  spells: SpellReference[];
-  spellsById: Record<string, SpellReference>;
 };
 
 export type RestrictionWarning = {

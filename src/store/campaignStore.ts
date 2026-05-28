@@ -116,7 +116,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
   async initialize(campaignId = "demo-table") {
     if (unsubscribe) unsubscribe();
-    repository = createRepository();
+    repository = await createRepository();
     set({ loading: true, error: null, repositoryKind: repository.kind });
 
     try {
@@ -142,7 +142,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
   },
 
   async createCampaign(name) {
-    repository ??= createRepository();
+    repository ??= await createRepository();
     const campaignId = makeCampaignId(name);
     await repository.signIn();
     await repository.ensureCampaign(createStarterCampaign(campaignId, name));

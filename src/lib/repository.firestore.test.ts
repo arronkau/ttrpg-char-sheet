@@ -11,7 +11,7 @@ const maybeDescribe = runFirestoreSmoke ? describe : describe.skip;
 
 maybeDescribe("firestore emulator smoke", () => {
   it("signs in, creates a campaign, and receives live campaign data", async () => {
-    const repository = createRepository();
+    const repository = await createRepository();
     expect(repository.kind).toBe("firestore");
 
     await repository.signIn();

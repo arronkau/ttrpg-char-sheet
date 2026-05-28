@@ -6,6 +6,7 @@ import {
   connectFirestoreEmulator,
   type Firestore
 } from "firebase/firestore";
+import { firebaseConfigPresent } from "./firebaseConfig";
 
 export type FirebaseServices = {
   app: FirebaseApp;
@@ -15,14 +16,6 @@ export type FirebaseServices = {
 
 let services: FirebaseServices | null | undefined;
 let persistenceStarted = false;
-
-export function firebaseConfigPresent(): boolean {
-  return Boolean(
-    import.meta.env.VITE_FIREBASE_API_KEY &&
-      import.meta.env.VITE_FIREBASE_PROJECT_ID &&
-      import.meta.env.VITE_FIREBASE_APP_ID
-  );
-}
 
 export function getFirebaseServices(): FirebaseServices | null {
   if (!firebaseConfigPresent()) return null;
