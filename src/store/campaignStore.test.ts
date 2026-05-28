@@ -346,6 +346,7 @@ describe("campaign entity actions", () => {
       languages: ["Common"],
       abilities: defaultAbilities(),
       hp: { currentHp: 5, maxHp: 5 },
+      skills: { skillPointsEnabled: true, allocatedPoints: { move_silently: 2 } },
       notes: { publicNotes: "Carries chalk." }
     });
 
@@ -356,6 +357,7 @@ describe("campaign entity actions", () => {
     expect(entity?.createdAt).toBeTruthy();
     expect(entity?.updatedAt).toBeTruthy();
     expect(entity?.hp).toEqual({ currentHp: 5, maxHp: 5 });
+    expect(entity?.skills).toEqual({ skillPointsEnabled: true, allocatedPoints: { move_silently: 2 } });
   });
 
   it("creates retainers and hirelings with attachment and pay logistics", async () => {
@@ -435,11 +437,13 @@ describe("campaign entity actions", () => {
 
     await useCampaignStore.getState().updateEntity({
       ...entity,
-      hp: { currentHp: 3, maxHp: entity.hp?.maxHp ?? 4 }
+      hp: { currentHp: 3, maxHp: entity.hp?.maxHp ?? 4 },
+      skills: { skillPointsEnabled: true, allocatedPoints: { listen_at_doors: 1 } }
     });
 
     const updated = useCampaignStore.getState().entities.find((candidate) => candidate.id === "entity-mira");
     expect(updated?.hp?.currentHp).toBe(3);
+    expect(updated?.skills).toEqual({ skillPointsEnabled: true, allocatedPoints: { listen_at_doors: 1 } });
     expect(updated?.notes?.publicNotes).toBe("Keeps the map dry.");
     expect(updated?.spellcasting?.spellbookSpellIds).toEqual(["read-magic", "shield", "sleep"]);
   });

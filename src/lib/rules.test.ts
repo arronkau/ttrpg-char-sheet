@@ -5,13 +5,19 @@ import { isCurrentCampaignSnapshot, validateInventoryPlacement } from "./invento
 import {
   armorClass,
   buildInventoryTree,
+  classHitDice,
   classRestrictionWarnings,
+  classSkillRows,
   coinBreakdownForEntry,
   coinTotal,
   entityHandOccupancy,
   entityLoadBreakdown,
   entryItem,
   entrySlots,
+  expertisePointsForLevel,
+  formatEncounterMovement,
+  formatExplorationMovement,
+  formatOverlandMovement,
   handSlotForLocation,
   isActiveLight,
   isZeroSlotTreasureEntry,
@@ -23,6 +29,7 @@ import {
   stackSlots,
   summarizeEntity,
   turnsRemaining,
+  unspentSkillPoints,
   validateHandAssignment
 } from "./rules";
 import { createStarterCampaign, createTreasureItem, nowIso } from "./seed";
@@ -397,6 +404,46 @@ describe("light tracking", () => {
 describe("character derivations", () => {
   it("calculates level from class XP tables", () => {
     expect(levelForXp(catalogs.classesById["dwarf"], 2400)).toBe(2);
+  });
+
+  it("formats movement for character sheet display", () => {
+    expect(formatEncounterMovement(40)).toBe("40'");
+    expect(formatExplorationMovement(120)).toBe("120'");
+    expect(formatOverlandMovement(120)).toBe("24 mi");
+  });
+
+  it("uses current level hit dice with class hit die fallback", () => {
+    expect(classHitDice(catalogs.classesById["dwarf"], 2400)).toBe("2d8");
+    expect(classHitDice(catalogs.classesById["dwarf"], undefined)).toBe("1d8");
+  });
+
+  it("builds skill rows from defaults and class-level overrides", () => {
+    const magicUserRows = classSkillRows(catalogs.classesById["magic-user"], 1);
+    expect(magicUserRows.find((row) => row.id === "listen_at_doors")?.baseValue).toBe("1-in-6");
+    expect(magicUserRows.find((row) => row.id === "move_silently")?.baseValue).toBe("1-in-6");
+    expect(magicUserRows.find((row) => row.id === "search_secret_doors")?.baseValue).toBe("1-in-6");
+
+    const thiefRows = classSkillRows(catalogs.classesById["thief"], 3);
+    expect(thiefRows.find((row) => row.id === "listen_at_doors")?.baseValue).toBe("1-3");
+    expect(thiefRows.find((row) => row.id === "move_silently")?.baseValue).toBe("30%");
+  });
+
+  it("calculates expertise points, unspent points, and final skill values", () => {
+    const thief = character("thief", "thief", 10);
+    thief.skills = {
+      skillPointsEnabled: true,
+      allocatedPoints: {
+        move_silently: 2,
+        listen_at_doors: 1
+      }
+    };
+
+    expect(expertisePointsForLevel(catalogs.classesById["thief"], 3)).toBe(10);
+    expect(unspentSkillPoints(thief, catalogs.classesById["thief"], 3)).toBe(7);
+
+    const rows = classSkillRows(catalogs.classesById["thief"], 3, thief.skills.allocatedPoints);
+    expect(rows.find((row) => row.id === "move_silently")?.finalValue).toBe("40%");
+    expect(rows.find((row) => row.id === "listen_at_doors")?.finalValue).toBe("1-4");
   });
 
   it("calculates AC from equipped armor, hand-held shield, dexterity, and magic fields", () => {

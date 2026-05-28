@@ -258,6 +258,32 @@
         }
       ],
       "feature_progression": {
+        "expertise_points": {
+          "points_by_level": {
+            "1": 4,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 1,
+            "6": 1,
+            "7": 1,
+            "8": 1,
+            "9": 1,
+            "10": 1,
+            "11": 1,
+            "12": 1,
+            "13": 1,
+            "14": 1
+          },
+          "allocatable_skill_ids": [
+            "climb_sheer_surfaces",
+            "falling_damage_reduction",
+            "hide_in_shadows",
+            "move_silently",
+            "tightrope_walking"
+          ],
+          "notes": "Optional expertise points: 4 points at 1st level, then 1 point at each later level."
+        },
         "skills_percent_by_level": {
           "1": {
             "climb_sheer_surfaces": 87,
@@ -832,6 +858,31 @@
         }
       ],
       "feature_progression": {
+        "expertise_points": {
+          "points_by_level": {
+            "1": 3,
+            "2": 1,
+            "3": 1,
+            "4": 1,
+            "5": 0,
+            "6": 1,
+            "7": 1,
+            "8": 1,
+            "9": 1,
+            "10": 0,
+            "11": 1,
+            "12": 1,
+            "13": 1,
+            "14": 0
+          },
+          "allocatable_skill_ids": [
+            "climb_sheer_surfaces",
+            "listen_at_doors",
+            "hide_in_shadows",
+            "move_silently"
+          ],
+          "notes": "Optional expertise points: 3 points at 1st level, then 1 point at each later level except levels 5, 10, and 14."
+        },
         "skills_by_level": {
           "1": {
             "assassination_modifier": 0,
@@ -9019,6 +9070,34 @@
         }
       ],
       "feature_progression": {
+        "expertise_points": {
+          "points_by_level": {
+            "1": 6,
+            "2": 2,
+            "3": 2,
+            "4": 2,
+            "5": 2,
+            "6": 2,
+            "7": 2,
+            "8": 2,
+            "9": 2,
+            "10": 2,
+            "11": 2,
+            "12": 2,
+            "13": 2,
+            "14": 2
+          },
+          "allocatable_skill_ids": [
+            "climb_sheer_surfaces",
+            "find_remove_treasure_traps",
+            "listen_at_doors",
+            "hide_in_shadows",
+            "move_silently",
+            "open_locks",
+            "pick_pockets"
+          ],
+          "notes": "Optional expertise points: 6 points at 1st level, then 2 points at each later level."
+        },
         "skills_by_level": {
           "1": {
             "climb_sheer_surfaces": 87,

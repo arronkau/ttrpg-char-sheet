@@ -509,6 +509,7 @@ function entityInputFromDraft(draft: EntityDraft, existing: Entity | null): Enti
   if (existing?.raceId !== undefined) input.raceId = existing.raceId;
   if (existing?.combatState) input.combatState = existing.combatState;
   if (existing?.spellcasting) input.spellcasting = existing.spellcasting;
+  if (existing?.skills) input.skills = existing.skills;
 
   const logistics = entityLogisticsFromDraft(draft);
   if (Object.keys(logistics).length > 0) input.logistics = logistics;

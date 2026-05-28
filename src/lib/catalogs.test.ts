@@ -21,6 +21,15 @@ describe("catalog normalization", () => {
     expect(catalogs.itemsById["item_belt_pouch_005"].container?.coinCapacity).toBe(100);
   });
 
+  it("loads optional expertise point data only for matching class names", () => {
+    const catalogs = buildCatalogs();
+    expect(catalogs.classesById["thief"].feature_progression?.expertise_points?.points_by_level["1"]).toBe(6);
+    expect(catalogs.classesById["acrobat"].feature_progression?.expertise_points?.points_by_level["1"]).toBe(4);
+    expect(catalogs.classesById["assassin"].feature_progression?.expertise_points?.points_by_level["5"]).toBe(0);
+    expect(catalogs.classesById["magic-user"].feature_progression?.expertise_points).toBeUndefined();
+    expect(catalogs.classesById["cleric"].feature_progression?.expertise_points).toBeUndefined();
+  });
+
   it("loads and derives the async spell catalog", async () => {
     const spellCatalog = await loadSpellCatalog();
     expect(spellCatalog.spells.length).toBeGreaterThan(100);

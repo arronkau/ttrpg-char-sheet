@@ -78,6 +78,10 @@ export type Entity = {
     knownSpells?: string[];
     memorizedSpells?: Array<{ id: string; spellId: string; expended: boolean; source?: string }>;
   };
+  skills?: {
+    skillPointsEnabled?: boolean;
+    allocatedPoints?: Record<string, number>;
+  };
   notes?: {
     publicNotes?: string;
     privateNotes?: string;
@@ -218,6 +222,11 @@ export type ClassDefinition = {
   levels: ClassLevel[];
   feature_progression?: {
     skills_by_level?: Record<string, Record<string, number | string>>;
+    expertise_points?: {
+      points_by_level: Record<string, number>;
+      allocatable_skill_ids?: string[];
+      notes?: string;
+    };
   };
   feature_text_raw?: string;
   skill_notes?: Array<{ skill_id: string; name: string; text: string }>;

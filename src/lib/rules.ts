@@ -33,6 +33,16 @@ const ENCUMBRANCE_THRESHOLDS = [
 ];
 
 const COIN_DENOMINATIONS: Array<keyof CoinBreakdown> = ["pp", "gp", "sp", "cp"];
+const DEFAULT_SKILL_VALUES: Record<string, number | string> = {
+  listen_at_doors: "1-in-6",
+  move_silently: "1-in-6",
+  search_secret_doors: "1-in-6"
+};
+const DEFAULT_SKILL_NAMES: Record<string, string> = {
+  listen_at_doors: "Listen",
+  move_silently: "Move Silent",
+  search_secret_doors: "Search Secret"
+};
 
 export type EntityLoadBreakdown = {
   equippedSlots: number;
@@ -54,6 +64,15 @@ export type InventoryConsumptionEvent = {
 export type LightTurnSpendResult =
   | { disposition: "updated"; entry: InventoryEntry; event?: InventoryConsumptionEvent }
   | { disposition: "consumed"; entry: InventoryEntry; event: InventoryConsumptionEvent };
+
+export type SkillRow = {
+  id: string;
+  name: string;
+  baseValue: string;
+  allocatedPoints: number;
+  finalValue: string;
+  allocatable: boolean;
+};
 
 export function abilityModifier(score: number | undefined): number {
   const value = score ?? 10;
@@ -88,6 +107,72 @@ export function xpForNextLevel(classDef: ClassDefinition | undefined, xp: number
 export function classLevelData(classDef: ClassDefinition | undefined, xp: number | undefined) {
   const level = levelForXp(classDef, xp);
   return classDef?.levels.find((candidate) => candidate.level === level);
+}
+
+export function classHitDice(classDef: ClassDefinition | undefined, xp: number | undefined): string | undefined {
+  return classLevelData(classDef, xp)?.hit_dice ?? classDef?.hit_die;
+}
+
+export function expertisePointsForLevel(classDef: ClassDefinition | undefined, level: number | undefined): number {
+  if (!classDef || level === undefined) return 0;
+  const pointsByLevel = classDef.feature_progression?.expertise_points?.points_by_level;
+  if (!pointsByLevel) return 0;
+  return Object.entries(pointsByLevel).reduce((total, [levelKey, points]) => {
+    const pointLevel = Number(levelKey);
+    return Number.isFinite(pointLevel) && pointLevel <= level ? total + normalizeSkillPointCount(points) : total;
+  }, 0);
+}
+
+export function allocatedSkillPoints(entity: Entity): number {
+  return Object.values(entity.skills?.allocatedPoints ?? {}).reduce((total, points) => total + normalizeSkillPointCount(points), 0);
+}
+
+export function unspentSkillPoints(entity: Entity, classDef: ClassDefinition | undefined, level: number | undefined): number {
+  return Math.max(0, expertisePointsForLevel(classDef, level) - allocatedSkillPoints(entity));
+}
+
+export function classSkillRows(
+  classDef: ClassDefinition | undefined,
+  level: number | undefined,
+  allocatedPoints: Record<string, number> = {}
+): SkillRow[] {
+  const levelSkills = classSkillsForLevel(classDef, level);
+  const skillNames = new Map<string, string>();
+  classDef?.skill_notes?.forEach((skill) => {
+    if (skill.skill_id === "hear_noise" && (levelSkills.listen_at_doors ?? DEFAULT_SKILL_VALUES.listen_at_doors)) return;
+    skillNames.set(skill.skill_id, skill.name);
+  });
+  Object.entries(DEFAULT_SKILL_NAMES).forEach(([id, name]) => {
+    if (!skillNames.has(id)) skillNames.set(id, name);
+  });
+
+  const allocatableIds = new Set(classDef?.feature_progression?.expertise_points?.allocatable_skill_ids ?? []);
+
+  return [...skillNames.entries()].map(([id, name]) => {
+    const baseRaw = normalizeDefaultSkillValue(levelSkills[id] ?? DEFAULT_SKILL_VALUES[id] ?? "—");
+    const allocated = normalizeSkillPointCount(allocatedPoints[id]);
+    const allocatable = allocatableIds.has(id);
+    return {
+      id,
+      name,
+      baseValue: formatSkillValue(baseRaw),
+      allocatedPoints: allocated,
+      finalValue: formatSkillValue(applySkillPoints(baseRaw, allocatable ? allocated : 0)),
+      allocatable
+    };
+  });
+}
+
+export function formatEncounterMovement(feet: number): string {
+  return `${Math.max(0, Math.floor(feet))}'`;
+}
+
+export function formatExplorationMovement(feet: number): string {
+  return `${Math.max(0, Math.floor(feet))}'`;
+}
+
+export function formatOverlandMovement(explorationFeet: number): string {
+  return `${Math.max(0, Math.floor(explorationFeet / 5))} mi`;
 }
 
 export function entryItem(entry: InventoryEntry, catalogs: Catalogs): ItemTemplate {
@@ -649,6 +734,62 @@ export function splitInventoryEntry(entry: InventoryEntry, splitQuantity: number
       updatedAt: new Date().toISOString()
     }
   ];
+}
+
+function classSkillsForLevel(classDef: ClassDefinition | undefined, level: number | undefined): Record<string, number | string> {
+  const skillsByLevel = classDef?.feature_progression?.skills_by_level;
+  if (!skillsByLevel) return {};
+  const targetLevel = level ?? 1;
+  const exact = skillsByLevel[String(targetLevel)];
+  if (exact) return exact;
+  const closestLevel = Object.keys(skillsByLevel)
+    .map((key) => Number(key))
+    .filter((candidate) => Number.isFinite(candidate) && candidate <= targetLevel)
+    .sort((a, b) => a - b)
+    .at(-1);
+  return closestLevel === undefined ? {} : skillsByLevel[String(closestLevel)] ?? {};
+}
+
+function normalizeDefaultSkillValue(value: number | string): number | string {
+  return value === "default" ? "1-in-6" : value;
+}
+
+function applySkillPoints(value: number | string, points: number): number | string {
+  if (points <= 0) return value;
+  if (typeof value === "number") return Math.min(125, value + points * 5);
+  const d6Successes = d6SuccessCount(value);
+  if (d6Successes !== null) {
+    const nextSuccesses = Math.min(5, d6Successes + points);
+    return /^1-\d$/.test(value) ? `1-${nextSuccesses}` : `${nextSuccesses}-in-6`;
+  }
+  return value;
+}
+
+function formatSkillValue(value: number | string): string {
+  if (typeof value === "number") {
+    if (value < 0) return signedNumber(value);
+    return `${value}%`;
+  }
+  if (value === "1") return "1-in-6";
+  return value;
+}
+
+function d6SuccessCount(value: string): number | null {
+  if (value === "1") return 1;
+  const rangeMatch = value.match(/^1-(\d)$/);
+  if (rangeMatch) return Number(rangeMatch[1]);
+  const inSixMatch = value.match(/^(\d)-in-6$/);
+  if (inSixMatch) return Number(inSixMatch[1]);
+  return null;
+}
+
+function normalizeSkillPointCount(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
+function signedNumber(value: number): string {
+  return value > 0 ? `+${value}` : `${value}`;
 }
 
 function createMissingItem(id: string): ItemTemplate {

@@ -1491,7 +1491,7 @@ h3 {
 
 /* Character sheet: OSE-inspired table layout. Scoped to CharacterPage. */
 .sheet-page {
-  grid-template-columns: minmax(760px, 1fr) minmax(280px, 0.28fr);
+  grid-template-columns: minmax(760px, 1fr);
   align-items: start;
 }
 
@@ -1505,6 +1505,18 @@ h3 {
 
 .sheet-toolbar label {
   width: min(340px, 100%);
+}
+
+.sheet-toolbar-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  width: min(460px, 100%);
+}
+
+.sheet-toolbar-controls label {
+  flex: 1;
 }
 
 .ose-sheet {
@@ -1547,7 +1559,6 @@ h3 {
 }
 
 .abilities-box,
-.combat-box,
 .movement-box,
 .saves-box,
 .skills-box {
@@ -1555,17 +1566,22 @@ h3 {
 }
 
 .features-box,
+.combat-box,
 .inventory-sheet-box {
   grid-column: 2;
 }
 
+.combat-box {
+  grid-row: 1;
+}
+
 .features-box {
-  grid-row: 1 / span 3;
+  grid-row: 2 / span 3;
   min-height: 310px;
 }
 
 .inventory-sheet-box {
-  grid-row: 4 / span 3;
+  grid-column: 1 / -1;
 }
 
 .sheet-field {
@@ -1667,19 +1683,42 @@ h3 {
   background: #fffdf8;
 }
 
+.sheet-box-header,
 .skill-table > div,
-.sheet-inventory-list > div {
+.sheet-inventory-node > div:first-child {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+.sheet-box-header {
+  margin-bottom: 0.5rem;
+}
+
+.sheet-box-header h3 {
+  margin: 0;
+}
+
+.sheet-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #5f574c;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.skill-table > div,
+.sheet-inventory-node > div:first-child {
   min-height: 30px;
   padding: 0.25rem 0.35rem;
   border-bottom: 1px solid #cfc6b4;
 }
 
 .skill-table span,
-.sheet-inventory-list span {
+.sheet-inventory-node span {
   min-width: 0;
   overflow: hidden;
   font-weight: 800;
@@ -1688,11 +1727,47 @@ h3 {
 }
 
 .skill-table strong,
-.sheet-inventory-list small {
+.skill-table small,
+.sheet-inventory-node small {
   color: #676054;
   font-size: 0.78rem;
   font-weight: 900;
   white-space: nowrap;
+}
+
+.skill-table-with-points {
+  gap: 0.25rem;
+}
+
+.skill-table-with-points > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 70px 52px 70px;
+  align-items: center;
+}
+
+.skill-table-with-points input {
+  width: 44px;
+  min-height: 28px;
+  padding: 0.2rem;
+  border: 1px solid #2f2b25;
+  border-radius: 0;
+  background: #fffdf8;
+  text-align: center;
+  font-weight: 900;
+}
+
+.skill-table-head {
+  color: #676054;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.skill-points-note {
+  margin: 0 0 0.45rem;
+  color: #7b3027;
+  font-size: 0.8rem;
+  font-weight: 900;
 }
 
 .sheet-subhead,
@@ -1734,7 +1809,7 @@ h3 {
 
 .inventory-sheet-grid {
   display: grid;
-  grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 1fr) minmax(220px, 1.2fr);
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
   gap: 0.65rem;
 }
 
@@ -1757,6 +1832,34 @@ h3 {
 .load-track span {
   border-top: 2px solid #2f2b25;
   padding-top: 0.25rem;
+}
+
+.sheet-inventory-node {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.sheet-inventory-node > div:first-child {
+  padding-left: calc(0.2rem + var(--depth) * 0.8rem);
+}
+
+.sheet-inventory-node .icon-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+}
+
+.sheet-inventory-node span {
+  flex: 1;
+}
+
+.sheet-inventory-node.container-node > div:first-child {
+  background: #fffaf0;
+}
+
+.sheet-inventory-children {
+  display: grid;
+  gap: 0.2rem;
 }
 
 .sheet-sidebar {
