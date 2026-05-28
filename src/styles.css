@@ -1817,3 +1817,149 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.reference-page .section-heading {
+  align-items: flex-start;
+}
+
+.muted-copy {
+  max-width: 72ch;
+  margin-top: 0.2rem;
+  color: #6b6255;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.reference-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 0.22fr) minmax(140px, 0.22fr);
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.reference-toolbar-four {
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(130px, 0.18fr));
+}
+
+.reference-toolbar label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.reference-toolbar label > span {
+  color: #676054;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.reference-results-summary {
+  margin-top: 0.8rem;
+  color: #676054;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reference-row-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+
+.reference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e1d8c5;
+  border-radius: 8px;
+  background: #fffaf0;
+  gap: 0.65rem;
+  align-items: start;
+}
+
+.reference-row-main {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.reference-row header {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(260px, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.reference-row h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.reference-row p {
+  margin: 0;
+  color: #4f4a40;
+  font-size: 0.9rem;
+  line-height: 1.38;
+}
+
+.reference-row-action {
+  margin-top: 0.05rem;
+  flex: 0 0 auto;
+}
+
+.metadata-pills,
+.metadata-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.metadata-pills {
+  justify-content: flex-end;
+}
+
+.metadata-pills span,
+.metadata-line span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.12rem 0.42rem;
+  border: 1px solid #ded3bd;
+  border-radius: 999px;
+  background: #fbf4e8;
+  color: #5d554b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.metadata-line {
+  margin-top: 0.05rem;
+}
+
+.metadata-line span {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  padding-right: 0.25rem;
+}
+
+@media (max-width: 850px) {
+  .reference-toolbar,
+  .reference-toolbar-four,
+  .reference-row header {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .metadata-pills {
+    justify-content: flex-start;
+  }
+}
