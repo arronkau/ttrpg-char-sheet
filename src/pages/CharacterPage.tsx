@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Edit3 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   abilityModifier,
   buildInventoryTree,
@@ -39,6 +40,7 @@ const saveLabels: Record<string, string> = {
 };
 
 export function CharacterPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const entities = useCampaignStore((state) => state.entities);
   const inventoryEntries = useCampaignStore((state) => state.inventoryEntries);
   const catalogs = useCampaignStore((state) => state.catalogs);
@@ -48,13 +50,21 @@ export function CharacterPage() {
     () => entities.filter((entity) => ["character", "retainer", "hireling"].includes(entity.type)),
     [entities]
   );
-  const [selectedId, setSelectedId] = useState(characterEntities[0]?.id ?? "");
+  const requestedEntityId = searchParams.get("entityId") ?? "";
+  const [selectedId, setSelectedId] = useState(requestedEntityId || characterEntities[0]?.id || "");
   const [isEditing, setIsEditing] = useState(false);
   const entity = characterEntities.find((candidate) => candidate.id === selectedId) ?? characterEntities[0];
   const classDef = entity?.classId ? catalogs.classesById[entity.classId] : undefined;
   const summary = entity ? summarizeEntity(entity, inventoryEntries, catalogs, viewMode) : null;
   const entityEntries = useMemo(() => inventoryEntries.filter((entry) => entry.entityId === entity?.id), [inventoryEntries, entity?.id]);
   const tree = useMemo(() => buildInventoryTree(entityEntries, catalogs), [entityEntries, catalogs]);
+
+  useEffect(() => {
+    if (requestedEntityId) {
+      setSelectedId(requestedEntityId);
+      setIsEditing(false);
+    }
+  }, [requestedEntityId]);
 
   if (!entity || !summary) {
     return (
@@ -93,6 +103,7 @@ export function CharacterPage() {
               value={entity.id}
               onChange={(event) => {
                 setSelectedId(event.target.value);
+                setSearchParams({ entityId: event.target.value });
                 setIsEditing(false);
               }}
             >

@@ -377,7 +377,9 @@ h3 {
 
 .hand-item-row {
   display: grid;
-  gap: 0.3rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
   padding: 0.35rem;
   border: 1px solid #e1d8c5;
@@ -407,6 +409,7 @@ h3 {
 .hand-item-row > div:last-child {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.2rem;
 }
 
@@ -521,7 +524,7 @@ h3 {
 
 .inventory-row {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.35rem;
   min-height: 34px;
@@ -549,9 +552,9 @@ h3 {
 
 .row-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
   gap: 0.25rem;
-  padding-left: calc(2.25rem + var(--depth) * 0.75rem);
 }
 
 .row-actions select {
@@ -1107,6 +1110,17 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.party-card-title h3 a {
+  color: inherit;
+  text-decoration-color: #c7822f;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.16rem;
+}
+
+.party-card-title h3 a:hover {
+  color: #8b3f2f;
+}
+
 .party-card-header p {
   margin-top: 0.1rem;
   color: #676054;
@@ -1224,7 +1238,6 @@ h3 {
 }
 
 .party-stat span,
-.party-hands h4,
 .party-hand-slot > span {
   display: inline-flex;
   align-items: center;
@@ -1255,10 +1268,6 @@ h3 {
   gap: 0.35rem;
 }
 
-.party-hands h4 {
-  font-size: 0.74rem;
-}
-
 .party-hand-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1267,12 +1276,19 @@ h3 {
 
 .party-hand-slot {
   display: grid;
+  justify-items: stretch;
+  text-align: left;
   gap: 0.3rem;
   min-height: 62px;
   padding: 0.45rem;
   border: 1px dashed #d6ccb9;
   border-radius: 6px;
   background: #fffdf8;
+}
+
+.party-hand-slot:hover {
+  border-color: #c8b17f;
+  background: #fff8ea;
 }
 
 .party-hand-slot.occupied {
@@ -1512,7 +1528,7 @@ h3 {
   }
 
   .inventory-row {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .inventory-row > svg,
@@ -1521,7 +1537,7 @@ h3 {
   }
 
   .row-actions {
-    padding-left: calc(0.25rem + var(--depth) * 0.75rem);
+    min-width: 0;
   }
 }
 

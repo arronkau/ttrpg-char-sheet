@@ -637,27 +637,27 @@ function InventoryNodeRow({
             {node.usedSlots}/{node.capacitySlots} · {node.item.container?.loadCategory ?? "stowed"}
           </span>
         )}
+        {hasRowActions && (
+          <div className="row-actions">
+            {node.item.emitsLight && (
+              <button
+                className={node.entry.state?.isLit ? "icon-button lit" : "icon-button"}
+                onClick={() => void toggleLight(node.entry.id)}
+                title={isDepleted ? "Light source is depleted" : "Toggle light"}
+                disabled={isDepleted}
+              >
+                <Flame size={15} />
+                {isDepleted ? "Empty" : remaining === null ? "Lit" : remaining}
+              </button>
+            )}
+            {node.entry.quantity > 1 && !coins && (
+              <button className="tiny-button" onClick={() => void splitEntry(node.entry.id, Math.ceil(node.entry.quantity / 2))}>
+                Split
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      {hasRowActions && (
-        <div className="row-actions">
-          {node.item.emitsLight && (
-            <button
-              className={node.entry.state?.isLit ? "icon-button lit" : "icon-button"}
-              onClick={() => void toggleLight(node.entry.id)}
-              title={isDepleted ? "Light source is depleted" : "Toggle light"}
-              disabled={isDepleted}
-            >
-              <Flame size={15} />
-              {isDepleted ? "Empty" : remaining === null ? "Lit" : remaining}
-            </button>
-          )}
-          {node.entry.quantity > 1 && !coins && (
-            <button className="tiny-button" onClick={() => void splitEntry(node.entry.id, Math.ceil(node.entry.quantity / 2))}>
-              Split
-            </button>
-          )}
-        </div>
-      )}
       {expanded && node.children.length > 0 && (
         <div className="inventory-node-children">
           {node.children.map((child) => (

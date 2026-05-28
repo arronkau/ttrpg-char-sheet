@@ -1,4 +1,5 @@
-import { AlertTriangle, Flame, Hand, HeartPulse, Shield } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { AlertTriangle, Flame, HeartPulse, Shield } from "lucide-react";
 import { useMemo, useState } from "react";
 import { displayName, entityHandOccupancy, entryItem, isActiveLight, summarizeEntity, turnsRemaining } from "../lib/rules";
 import { useCampaignStore } from "../store/campaignStore";
@@ -6,6 +7,7 @@ import type { ReactNode } from "react";
 import type { Catalogs, EntitySummary, InventoryEntry, ViewMode } from "../types";
 
 export function PartyPage() {
+  const { campaignId } = useParams();
   const entities = useCampaignStore((state) => state.entities);
   const inventoryEntries = useCampaignStore((state) => state.inventoryEntries);
   const catalogs = useCampaignStore((state) => state.catalogs);
@@ -31,6 +33,7 @@ export function PartyPage() {
           {summaries.map((summary) => (
             <PartyCard
               key={summary.entity.id}
+              campaignId={campaignId || "demo-table"}
               summary={summary}
               inventoryEntries={inventoryEntries}
               catalogs={catalogs}
@@ -44,27 +47,40 @@ export function PartyPage() {
 }
 
 function PartyCard({
+  campaignId,
   summary,
   inventoryEntries,
   catalogs,
   viewMode
 }: {
+  campaignId: string;
   summary: EntitySummary;
   inventoryEntries: InventoryEntry[];
   catalogs: Catalogs;
   viewMode: ViewMode;
 }) {
+  const navigate = useNavigate();
   const [warningsOpen, setWarningsOpen] = useState(false);
   const warningPanelId = `warnings-${summary.entity.id}`;
   const classLabel = classLevelLabel(summary, catalogs);
   const languagesLabel = summary.entity.languages?.length ? summary.entity.languages.join(", ") : "No languages";
+  const inventoryPath = `/campaign/${campaignId}/inventory`;
+  const linksToSheet = ["character", "retainer", "hireling"].includes(summary.entity.type);
 
   return (
     <article className="party-card">
       <header className="party-card-header">
         <div>
           <div className="party-card-title">
-            <h3>{summary.entity.name}</h3>
+            <h3>
+              {linksToSheet ? (
+                <Link to={`/campaign/${campaignId}/sheet?entityId=${encodeURIComponent(summary.entity.id)}`}>
+                  {summary.entity.name}
+                </Link>
+              ) : (
+                summary.entity.name
+              )}
+            </h3>
             <span className="entity-type-chip">{titleCase(summary.entity.type)}</span>
           </div>
           <p>{classLabel}</p>
@@ -103,13 +119,15 @@ function PartyCard({
       </div>
 
       <section className="party-hands">
-        <h4>
-          <Hand size={15} />
-          Hands
-        </h4>
         <div className="party-hand-grid">
           {handSections(summary.entity.id, inventoryEntries).map((section) => (
-            <div className={section.entries.length ? "party-hand-slot occupied" : "party-hand-slot"} key={section.label}>
+            <button
+              className={section.entries.length ? "party-hand-slot occupied" : "party-hand-slot"}
+              key={section.label}
+              type="button"
+              onClick={() => navigate(inventoryPath)}
+              title="Open inventory"
+            >
               <span>{section.label}</span>
               {section.entries.length ? (
                 <div className="party-hand-items">
@@ -120,7 +138,7 @@ function PartyCard({
               ) : (
                 <p>Empty</p>
               )}
-            </div>
+            </button>
           ))}
         </div>
       </section>
@@ -183,8 +201,8 @@ function handSections(entityId: string, entries: InventoryEntry[]) {
 
   const hands = entityHandOccupancy(entityId, entries);
   return [
-    { label: "Left", entries: hands.left_hand },
-    { label: "Right", entries: hands.right_hand }
+    { label: "Left hand", entries: hands.left_hand },
+    { label: "Right hand", entries: hands.right_hand }
   ];
 }
 
