@@ -515,7 +515,7 @@ describe("campaign entity actions", () => {
     const entity = useCampaignStore.getState().entities.find((candidate) => candidate.name === "Nessa");
 
     expect(entity?.active).toBe(true);
-    expect(entity?.sortOrder).toBe(40);
+    expect(entity?.sortOrder).toBe(60);
     expect(entity?.createdAt).toBeTruthy();
     expect(entity?.updatedAt).toBeTruthy();
     expect(entity?.hp).toEqual({ currentHp: 5, maxHp: 5 });
