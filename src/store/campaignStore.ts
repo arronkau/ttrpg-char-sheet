@@ -93,6 +93,10 @@ type CampaignState = {
     handSlot?: HandSlot | null;
     sortOrder?: number;
   }) => Promise<InventoryActionResult>;
+  swapInventoryOrder: (
+    a: { entryId: string; sortOrder: number },
+    b: { entryId: string; sortOrder: number }
+  ) => Promise<InventoryActionResult>;
   splitEntry: (entryId: string, quantity: number) => Promise<void>;
   toggleLight: (entryId: string) => Promise<void>;
   spendTurn: () => Promise<void>;
@@ -513,6 +517,24 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       );
     set((state) => ({ inventoryEntries: state.inventoryEntries.map((candidate) => movedEntries.find((moved) => moved.id === candidate.id) ?? candidate) }));
     await repository.saveInventoryEntries(campaignId, movedEntries);
+    return { ok: true };
+  },
+
+  async swapInventoryOrder(a, b) {
+    const { campaignId, inventoryEntries } = get();
+    if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
+    const entryA = inventoryEntries.find((candidate) => candidate.id === a.entryId);
+    const entryB = inventoryEntries.find((candidate) => candidate.id === b.entryId);
+    if (!entryA || !entryB) return { ok: false, message: "Item no longer exists." };
+    const timestamp = nowIso();
+    const nextA: InventoryEntry = { ...entryA, sortOrder: a.sortOrder, updatedAt: timestamp };
+    const nextB: InventoryEntry = { ...entryB, sortOrder: b.sortOrder, updatedAt: timestamp };
+    set((state) => ({
+      inventoryEntries: state.inventoryEntries.map((candidate) =>
+        candidate.id === nextA.id ? nextA : candidate.id === nextB.id ? nextB : candidate
+      )
+    }));
+    await repository.saveInventoryEntries(campaignId, [nextA, nextB]);
     return { ok: true };
   },
 

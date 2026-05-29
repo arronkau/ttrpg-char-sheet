@@ -624,6 +624,35 @@ h3 {
   background: #eef5ea;
 }
 
+/* Drop affordances: insert line for before/after, distinct cues for swap/inside. */
+.inventory-row.drop-before,
+.coin-treasure-row.drop-before,
+.hand-item-row.drop-before {
+  box-shadow: inset 0 3px 0 #2e6658;
+}
+
+.inventory-row.drop-after,
+.coin-treasure-row.drop-after,
+.hand-item-row.drop-after {
+  box-shadow: inset 0 -3px 0 #2e6658;
+}
+
+.inventory-row.drop-swap,
+.coin-treasure-row.drop-swap,
+.hand-item-row.drop-swap {
+  outline: 2px dashed #2e6658;
+  outline-offset: 2px;
+  background: #eef5ea;
+}
+
+.inventory-row.drop-inside,
+.coin-treasure-row.drop-inside,
+.hand-item-row.drop-inside {
+  outline: 2px solid #2e6658;
+  outline-offset: 2px;
+  background: #eef5ea;
+}
+
 .row-actions select {
   width: auto;
   max-width: 115px;

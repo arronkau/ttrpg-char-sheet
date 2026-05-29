@@ -288,6 +288,37 @@ describe("campaign inventory item actions", () => {
     expect(torch?.sortOrder).toBe(5);
   });
 
+  it("swaps the sort order of two sibling entries", async () => {
+    await initializeStore();
+
+    await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-borin-chain",
+      entityId: "entity-borin",
+      location: { kind: "equipped" },
+      handSlot: null,
+      sortOrder: 10
+    });
+    await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-borin-rope",
+      entityId: "entity-borin",
+      location: { kind: "equipped" },
+      handSlot: null,
+      sortOrder: 20
+    });
+
+    const result = await useCampaignStore.getState().swapInventoryOrder(
+      { entryId: "entry-borin-chain", sortOrder: 20 },
+      { entryId: "entry-borin-rope", sortOrder: 10 }
+    );
+
+    const chain = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-borin-chain");
+    const rope = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-borin-rope");
+
+    expect(result.ok).toBe(true);
+    expect(chain?.sortOrder).toBe(20);
+    expect(rope?.sortOrder).toBe(10);
+  });
+
   it("moves a container between entities while preserving descendants", async () => {
     await initializeStore();
 

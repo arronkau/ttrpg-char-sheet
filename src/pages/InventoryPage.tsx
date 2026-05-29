@@ -12,6 +12,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
@@ -37,7 +38,7 @@ import {
   Undo2,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { defaultInventoryQuantity, itemSearchText } from "../lib/catalogs";
 import { isInventoryLocation } from "../lib/inventoryIntegrity";
 import {
@@ -94,6 +95,11 @@ type EditTarget = {
 
 type ItemModalTarget = AddTarget | EditTarget;
 
+type RowDropPosition = "before" | "after" | "swap" | "inside";
+type RowDropIntent = { entryId: string; position: RowDropPosition };
+
+const DropIntentContext = createContext<RowDropIntent | null>(null);
+
 export function InventoryPage() {
   const catalogs = useCampaignStore((state) => state.catalogs);
   const entities = useCampaignStore((state) => state.entities);
@@ -104,11 +110,14 @@ export function InventoryPage() {
   const restoreEntity = useCampaignStore((state) => state.restoreEntity);
   const moveInventoryEntry = useCampaignStore((state) => state.moveInventoryEntry);
   const updateInventoryEntry = useCampaignStore((state) => state.updateInventoryEntry);
+  const swapInventoryOrder = useCampaignStore((state) => state.swapInventoryOrder);
   const [query, setQuery] = useState("");
   const [itemModalTarget, setItemModalTarget] = useState<ItemModalTarget | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [expandedOtherIds, setExpandedOtherIds] = useState<string[]>([]);
   const [activeDragEntryId, setActiveDragEntryId] = useState<string | null>(null);
+  const [dropIntent, setDropIntent] = useState<RowDropIntent | null>(null);
+  const dropIntentRef = useRef<RowDropIntent | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -138,18 +147,52 @@ export function InventoryPage() {
     setActiveDragEntryId(entryIdFromDragId(event.active.id));
   };
 
+  const setIntent = (intent: RowDropIntent | null) => {
+    dropIntentRef.current = intent;
+    setDropIntent(intent);
+  };
+
+  const handleDragMove = (event: DragMoveEvent) => {
+    setIntent(computeRowZone(event, tree, catalogs, entryIdFromDragId(event.active.id)));
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveDragEntryId(null);
+    const intent = dropIntentRef.current;
+    setIntent(null);
     const entryId = entryIdFromDragId(event.active.id);
     const overId = event.over?.id ? String(event.over.id) : "";
     if (!entryId || !overId) return;
     const activeEntry = inventoryEntries.find((entry) => entry.id === entryId);
     if (!activeEntry || isCoinPurseEntry(activeEntry, catalogs)) return;
-    const destination = dropDestinationFromId(overId, tree, inventoryEntries, catalogs, entryId);
+
+    // Center-on-row swap: when both items are siblings, just exchange their order.
+    if (intent?.position === "swap" && intent.entryId !== entryId) {
+      const targetEntry = inventoryEntries.find((entry) => entry.id === intent.entryId);
+      if (targetEntry && canSwapOrder(activeEntry, targetEntry)) {
+        const location: InventoryLocation = isInventoryLocation(activeEntry.location) ? activeEntry.location : { kind: "equipped" };
+        const siblings = nodesForDestination(tree, { entityId: activeEntry.entityId, location, handSlot: activeEntry.handSlot ?? null });
+        const effectiveSortOrder = (id: string) => {
+          const index = siblings.findIndex((node) => node.entry.id === id);
+          return normalizedSortOrder(siblings[index]?.entry.sortOrder) ?? (index + 1) * 10;
+        };
+        handleResult(
+          await swapInventoryOrder(
+            { entryId, sortOrder: effectiveSortOrder(targetEntry.id) },
+            { entryId: targetEntry.id, sortOrder: effectiveSortOrder(entryId) }
+          )
+        );
+        return;
+      }
+      // Different lists: fall through to an insert below the target.
+    }
+
+    const position = intent?.position;
+    const destination = dropDestinationFromId(overId, tree, inventoryEntries, catalogs, entryId, position);
     if (!destination || destination.targetEntryId === entryId) return;
     const resolvedHandSlot = handSlotForDrop(activeEntry, destination.handSlot, catalogs);
     const resolvedDestination = { ...destination, handSlot: resolvedHandSlot };
-    const orderPlan = inventorySortOrderPlan(tree, resolvedDestination, entryId);
+    const orderPlan = inventorySortOrderPlan(tree, resolvedDestination, entryId, position === "before" ? "before" : "after");
     const result = await moveInventoryEntry({
       entryId,
       entityId: resolvedDestination.entityId,
@@ -171,6 +214,7 @@ export function InventoryPage() {
 
   const handleDragCancel = () => {
     setActiveDragEntryId(null);
+    setIntent(null);
   };
 
   const activeDragNode = activeDragEntryId ? tree.allNodes.find((node) => node.entry.id === activeDragEntryId) : undefined;
@@ -180,9 +224,11 @@ export function InventoryPage() {
       sensors={sensors}
       collisionDetection={inventoryCollisionDetection}
       onDragStart={handleDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={(event) => void handleDragEnd(event)}
       onDragCancel={handleDragCancel}
     >
+      <DropIntentContext.Provider value={dropIntent}>
       <main className="page-stack inventory-page">
       <section className="inventory-toolbar panel">
         <div>
@@ -300,6 +346,7 @@ export function InventoryPage() {
       <DragOverlay>
         {activeDragNode ? <InventoryDragOverlay node={activeDragNode} catalogs={catalogs} viewMode={viewMode} /> : null}
       </DragOverlay>
+      </DropIntentContext.Provider>
     </DndContext>
   );
 }
@@ -525,7 +572,7 @@ function HandItemRow({
   const meta = itemSlotSummary(node.entry, catalogs);
 
   return (
-    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("hand-item-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("hand-item-row", drag.isDragging, rowDrop.isOver, rowDrop.position)} style={drag.style}>
       <DragHandle drag={drag} label={`Drag ${name}`} />
       <div className="inventory-row-name">
         <button className="item-name-button" onClick={() => onEdit({ mode: "edit", entry: node.entry, title: `Edit ${displayName(node.entry, catalogs, viewMode)}` })}>
@@ -660,7 +707,7 @@ function CoinTreasureRow({
   const name = itemRowName(node.entry, catalogs, viewMode);
 
   return (
-    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("coin-treasure-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("coin-treasure-row", drag.isDragging, rowDrop.isOver, rowDrop.position)} style={drag.style}>
       <DragHandle drag={drag} label={`Drag ${name}`} />
       <Gem size={14} />
       <div>
@@ -702,7 +749,9 @@ function useInventoryDraggable(entryId: string) {
 
 function useInventoryRowDrop(entryId: string) {
   const { setNodeRef, isOver } = useDroppable({ id: rowDropId(entryId) });
-  return { setNodeRef, isOver };
+  const intent = useContext(DropIntentContext);
+  const position = intent && intent.entryId === entryId ? intent.position : null;
+  return { setNodeRef, isOver, position };
 }
 
 function mergeRefs<T>(...refs: Array<(node: T | null) => void>) {
@@ -711,8 +760,19 @@ function mergeRefs<T>(...refs: Array<(node: T | null) => void>) {
   };
 }
 
-function rowClassName(base: string, dragging: boolean, over: boolean): string {
-  return [base, dragging ? "dragging" : "", over ? "row-drop-over" : ""].filter(Boolean).join(" ");
+function rowClassName(base: string, dragging: boolean, over: boolean, position: RowDropPosition | null): string {
+  const dropClass = position
+    ? position === "before"
+      ? "drop-before"
+      : position === "after"
+        ? "drop-after"
+        : position === "inside"
+          ? "drop-inside"
+          : "drop-swap"
+    : over
+      ? "row-drop-over"
+      : "";
+  return [base, dragging ? "dragging" : "", dropClass].filter(Boolean).join(" ");
 }
 
 function DragHandle({ drag, label }: { drag: InventoryDragHandle; label: string }) {
@@ -797,7 +857,7 @@ function InventoryNodeRow({
 
   return (
     <div className={isContainer ? "inventory-node container-node" : "inventory-node"} style={{ "--depth": depth } as React.CSSProperties}>
-      <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("inventory-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+      <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("inventory-row", drag.isDragging, rowDrop.isOver, rowDrop.position)} style={drag.style}>
         <DragHandle drag={drag} label={`Drag ${name}`} />
         {node.children.length ? (
           <button
@@ -1705,7 +1765,8 @@ function dropDestinationFromId(
   tree: ReturnType<typeof buildInventoryTree>,
   entries: InventoryEntry[],
   catalogs: Catalogs,
-  activeEntryId: string
+  activeEntryId: string,
+  position?: RowDropPosition
 ): InventoryDropDestination | null {
   const [kind, id, slot] = overId.split(":");
   if (kind === "root" && id) {
@@ -1723,7 +1784,10 @@ function dropDestinationFromId(
     const targetNode = tree.allNodes.find((node) => node.entry.id === id);
     if (!targetNode) return null;
     const target = targetNode.entry;
-    if (targetNode.item.type === "container" && !isCoinPurseEntry(target, catalogs) && target.id !== activeEntryId) {
+    const isContainerTarget =
+      targetNode.item.type === "container" && !isCoinPurseEntry(target, catalogs) && target.id !== activeEntryId;
+    // Drop inside a container only for the center zone (or legacy drops with no zone).
+    if (isContainerTarget && (position === "inside" || position === undefined)) {
       return { entityId: target.entityId, location: { kind: "contained", parentEntryId: target.id }, handSlot: null };
     }
     const location: InventoryLocation = isInventoryLocation(target.location) ? target.location : { kind: "equipped" };
@@ -1737,10 +1801,52 @@ function dropDestinationFromId(
   return null;
 }
 
+function computeRowZone(
+  event: DragMoveEvent | DragEndEvent,
+  tree: ReturnType<typeof buildInventoryTree>,
+  catalogs: Catalogs,
+  activeEntryId: string | null
+): RowDropIntent | null {
+  const over = event.over;
+  if (!over) return null;
+  const [kind, id] = String(over.id).split(":");
+  if (kind !== "row" || !id || id === activeEntryId) return null;
+  const targetNode = tree.allNodes.find((node) => node.entry.id === id);
+  if (!targetNode) return null;
+  const overRect = over.rect;
+  if (!overRect || !overRect.height) return null;
+  const isContainerTarget = targetNode.item.type === "container" && !isCoinPurseEntry(targetNode.entry, catalogs);
+
+  const activator = event.activatorEvent as { clientY?: number } | null;
+  if (activator && typeof activator.clientY === "number") {
+    const pointerY = activator.clientY + event.delta.y;
+    const ratio = (pointerY - overRect.top) / overRect.height;
+    let position: RowDropPosition;
+    if (ratio < 0.25) position = "before";
+    else if (ratio > 0.75) position = "after";
+    else position = isContainerTarget ? "inside" : "swap";
+    return { entryId: id, position };
+  }
+  // Keyboard fallback: compare the dragged element's center to the row center.
+  const activeRect = event.active.rect.current.translated;
+  const activeCenter = activeRect ? activeRect.top + activeRect.height / 2 : overRect.top;
+  const ratio = (activeCenter - overRect.top) / overRect.height;
+  return { entryId: id, position: ratio < 0.5 ? "before" : "after" };
+}
+
+function canSwapOrder(active: InventoryEntry, target: InventoryEntry): boolean {
+  if (active.entityId !== target.entityId) return false;
+  const activeLocation: InventoryLocation = isInventoryLocation(active.location) ? active.location : { kind: "equipped" };
+  const targetLocation: InventoryLocation = isInventoryLocation(target.location) ? target.location : { kind: "equipped" };
+  if (!sameInventoryLocation(activeLocation, targetLocation)) return false;
+  return (active.handSlot ?? null) === (target.handSlot ?? null);
+}
+
 function inventorySortOrderPlan(
   tree: ReturnType<typeof buildInventoryTree>,
   destination: InventoryDropDestination,
-  activeEntryId: string
+  activeEntryId: string,
+  insertPosition: "before" | "after" = "after"
 ): InventorySortOrderPlan {
   const destinationNodes = nodesForDestination(tree, destination).filter((node) => node.entry.id !== activeEntryId);
   if (!destination.targetEntryId) {
@@ -1748,7 +1854,7 @@ function inventorySortOrderPlan(
   }
   const targetIndex = destinationNodes.findIndex((node) => node.entry.id === destination.targetEntryId);
   if (targetIndex === -1) return { sortOrder: nextTrailingSortOrder(destinationNodes), rebalancedEntries: [] };
-  return sortOrderAtIndex(destinationNodes, targetIndex + 1);
+  return sortOrderAtIndex(destinationNodes, insertPosition === "before" ? targetIndex : targetIndex + 1);
 }
 
 function nodesForDestination(tree: ReturnType<typeof buildInventoryTree>, destination: InventoryDropDestination): InventoryNode[] {
