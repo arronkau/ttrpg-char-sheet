@@ -91,6 +91,7 @@ type CampaignState = {
     entityId: string;
     location: InventoryLocation;
     handSlot?: HandSlot | null;
+    sortOrder?: number;
   }) => Promise<InventoryActionResult>;
   splitEntry: (entryId: string, quantity: number) => Promise<void>;
   toggleLight: (entryId: string) => Promise<void>;
@@ -205,8 +206,9 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs, childItem: template });
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const sortOrder = nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
-    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode, normalizedHandSlot);
     const timestamp = nowIso();
     const normalizedQuantity = normalizeQuantity(quantity);
     const state = initialStateForTemplate(template);
@@ -217,6 +219,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         quantity: normalizedQuantity,
         location,
         handSlot: normalizedHandSlot,
+        carriedSortOrder: sortOrder,
+        heldSortOrder: sortOrder + 10,
         state,
         timestamp
       });
@@ -231,6 +235,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       quantity: normalizedQuantity,
       location,
       handSlot: normalizedHandSlot,
+      sortOrder,
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -247,8 +252,9 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const placementValidation = validateInventoryPlacement({ entityId, location, entries: inventoryEntries, catalogs, childItem: customItem });
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
+    const sortOrder = nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
-    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode, normalizedHandSlot);
     const timestamp = nowIso();
     const normalizedQuantity = normalizeQuantity(quantity);
     const state = initialStateForTemplate(customItem);
@@ -259,6 +265,8 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         quantity: normalizedQuantity,
         location,
         handSlot: normalizedHandSlot,
+        carriedSortOrder: sortOrder,
+        heldSortOrder: sortOrder + 10,
         state,
         timestamp
       });
@@ -273,6 +281,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       quantity: normalizedQuantity,
       location,
       handSlot: normalizedHandSlot,
+      sortOrder,
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -290,7 +299,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot);
-    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode, normalizedHandSlot);
     const timestamp = nowIso();
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
@@ -299,6 +308,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       quantity: Math.max(1, Math.floor(quantity)),
       location,
       handSlot: normalizedHandSlot,
+      sortOrder: nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot),
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -318,7 +328,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
-    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode, normalizedHandSlot);
     const timestamp = nowIso();
     const customItem = normalizeCustomItem(item, entry.customItem?.id ?? crypto.randomUUID());
     const placementValidation = validateInventoryPlacement({ entryId, entityId, location, entries: inventoryEntries, catalogs, childItem: customItem });
@@ -326,6 +336,13 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const { itemTemplateId: _itemTemplateId, ...entryWithoutTemplate } = entry;
     const nextState = stateForItemUpdate(customItem, entry.state);
     const normalizedQuantity = normalizeQuantity(quantity);
+    const destinationChanged =
+      entry.entityId !== entityId ||
+      !sameInventoryLocation(entry.location, location) ||
+      (entry.handSlot ?? null) !== normalizedHandSlot;
+    const nextSortOrder = destinationChanged
+      ? nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot, descendantIds)
+      : entry.sortOrder;
     if (shouldSplitQuantityForHandUse(normalizedQuantity, customItem, normalizedHandSlot)) {
       const nextOriginal: InventoryEntry = {
         ...entryWithoutTemplate,
@@ -343,6 +360,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         quantity: 1,
         location,
         handSlot: normalizedHandSlot,
+        sortOrder: nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot, descendantIds),
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -358,6 +376,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       quantity: normalizedQuantity,
       location,
       handSlot: normalizedHandSlot,
+      sortOrder: nextSortOrder,
       updatedAt: timestamp
     };
     if (nextState) nextEntry.state = nextState;
@@ -415,6 +434,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       quantity: totalCoins,
       location: { kind: "contained", parentEntryId: purseEntryId },
       handSlot: null,
+      sortOrder: primaryCoinEntry?.sortOrder ?? nextInventorySortOrder(inventoryEntries, entityId, { kind: "contained", parentEntryId: purseEntryId }, null),
       state: { coins: normalizedCoins },
       createdAt: primaryCoinEntry?.createdAt ?? timestamp,
       updatedAt: timestamp
@@ -433,7 +453,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     return { ok: true };
   },
 
-  async moveInventoryEntry({ entryId, entityId, location, handSlot = null }) {
+  async moveInventoryEntry({ entryId, entityId, location, handSlot = null, sortOrder }) {
     const { campaignId, inventoryEntries, catalogs, viewMode } = get();
     if (!campaignId || !repository) return { ok: false, message: "No campaign is loaded." };
     const entry = inventoryEntries.find((candidate) => candidate.id === entryId);
@@ -442,9 +462,18 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     if (!placementValidation.ok) return placementValidation;
     const normalizedHandSlot = handSlotForLocation(location, handSlot);
     const validation = validateHandAssignment(entityId, inventoryEntries, normalizedHandSlot, entryId);
-    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode);
+    if (!validation.ok) return blockedHandResult(validation.blockers, catalogs, viewMode, normalizedHandSlot);
     const timestamp = nowIso();
     const item = entryItem(entry, catalogs);
+    const descendantIds = collectInventoryDescendantIds(entryId, inventoryEntries);
+    const destinationChanged =
+      entry.entityId !== entityId ||
+      !sameInventoryLocation(entry.location, location) ||
+      (entry.handSlot ?? null) !== normalizedHandSlot;
+    const nextSortOrder = normalizeSortOrder(sortOrder) ??
+      (destinationChanged
+        ? nextInventorySortOrder(inventoryEntries, entityId, location, normalizedHandSlot, descendantIds)
+        : entry.sortOrder);
     if (shouldSplitForHandUse(entry, item, normalizedHandSlot)) {
       const [original, split] = splitInventoryEntry(entry, 1);
       const nextOriginal: InventoryEntry = {
@@ -458,6 +487,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
         entityId,
         location,
         handSlot: normalizedHandSlot,
+        sortOrder: nextSortOrder,
         updatedAt: timestamp
       };
       set((state) => ({
@@ -471,9 +501,9 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       entityId,
       location,
       handSlot: normalizedHandSlot,
+      sortOrder: nextSortOrder,
       updatedAt: timestamp
     };
-    const descendantIds = collectInventoryDescendantIds(entryId, inventoryEntries);
     const movedEntries = inventoryEntries
       .filter((candidate) => descendantIds.has(candidate.id))
       .map((candidate) =>
@@ -649,6 +679,8 @@ function createNewHeldUnitSplit({
   quantity,
   location,
   handSlot,
+  carriedSortOrder,
+  heldSortOrder,
   state,
   timestamp
 }: {
@@ -658,6 +690,8 @@ function createNewHeldUnitSplit({
   quantity: number;
   location: InventoryLocation;
   handSlot: HandSlot;
+  carriedSortOrder: number;
+  heldSortOrder: number;
   state: InventoryEntry["state"];
   timestamp: string;
 }): InventoryEntry[] {
@@ -667,6 +701,7 @@ function createNewHeldUnitSplit({
     quantity: quantity - 1,
     location,
     handSlot: null,
+    sortOrder: carriedSortOrder,
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -676,6 +711,7 @@ function createNewHeldUnitSplit({
     quantity: 1,
     location,
     handSlot,
+    sortOrder: heldSortOrder,
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -809,16 +845,60 @@ function directChildrenOf(parentEntryId: string, entries: InventoryEntry[]): Inv
   );
 }
 
+function nextInventorySortOrder(
+  entries: InventoryEntry[],
+  entityId: string,
+  location: InventoryLocation,
+  handSlot: HandSlot | null,
+  excludedEntryIds = new Set<string>()
+): number {
+  const siblingEntries = inventoryDestinationEntries(entries, entityId, location, handSlot, excludedEntryIds);
+  if (siblingEntries.length === 0) return 10;
+  const maxOrder = siblingEntries.reduce((max, entry, index) => {
+    const sortOrder = normalizeSortOrder(entry.sortOrder) ?? (index + 1) * 10;
+    return Math.max(max, sortOrder);
+  }, 0);
+  return maxOrder + 10;
+}
+
+function inventoryDestinationEntries(
+  entries: InventoryEntry[],
+  entityId: string,
+  location: InventoryLocation,
+  handSlot: HandSlot | null,
+  excludedEntryIds = new Set<string>()
+): InventoryEntry[] {
+  return entries.filter(
+    (entry) =>
+      !excludedEntryIds.has(entry.id) &&
+      entry.entityId === entityId &&
+      sameInventoryLocation(entry.location, location) &&
+      (entry.handSlot ?? null) === handSlot
+  );
+}
+
+function sameInventoryLocation(left: InventoryLocation, right: InventoryLocation): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "equipped") return true;
+  return right.kind === "contained" && left.parentEntryId === right.parentEntryId;
+}
+
+function normalizeSortOrder(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
   const exists = items.some((candidate) => candidate.id === item.id);
   if (!exists) return [...items, item];
   return items.map((candidate) => (candidate.id === item.id ? item : candidate));
 }
 
-function blockedHandResult(entries: InventoryEntry[], catalogs: Catalogs, viewMode: ViewMode): InventoryActionResult {
+function blockedHandResult(entries: InventoryEntry[], catalogs: Catalogs, viewMode: ViewMode, handSlot: HandSlot | null): InventoryActionResult {
   const itemNames = entries.map((entry) => displayName(entry, catalogs, viewMode)).join(", ");
   return {
     ok: false,
-    message: `That hand is already occupied by ${itemNames}.`
+    message: handSlot === "both_hands"
+      ? `That item needs two free hands; blocked by ${itemNames}.`
+      : `That hand is already occupied by ${itemNames}.`
   };
 }

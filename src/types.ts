@@ -187,6 +187,7 @@ export type InventoryEntry = {
   quantity: number;
   location: InventoryLocation;
   handSlot?: HandSlot | null;
+  sortOrder?: number;
   state?: InventoryEntryState;
   createdAt: string;
   updatedAt: string;

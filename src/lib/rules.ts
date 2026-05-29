@@ -309,6 +309,13 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
 
   const sortNodes = (nodes: InventoryNode[], seenIds = new Set<string>()) => {
     nodes.sort((a, b) => {
+      const aSort = normalizedSortOrder(a.entry.sortOrder);
+      const bSort = normalizedSortOrder(b.entry.sortOrder);
+      if (aSort !== null || bSort !== null) {
+        if (aSort !== null && bSort !== null && aSort !== bSort) return aSort - bSort;
+        if (aSort !== null && bSort === null) return -1;
+        if (aSort === null && bSort !== null) return 1;
+      }
       const aContainer = a.item.type === "container" ? 0 : 1;
       const bContainer = b.item.type === "container" ? 0 : 1;
       return aContainer - bContainer || a.item.name.localeCompare(b.item.name);
@@ -340,6 +347,10 @@ export function buildInventoryTree(entries: InventoryEntry[], catalogs: Catalogs
   allNodes.forEach((node) => computeUsedSlots(node));
 
   return { byEntityId, allNodes };
+}
+
+function normalizedSortOrder(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function wouldCreateParentCycle(entryId: string, parentId: string, entryById: Map<string, InventoryEntry>): boolean {

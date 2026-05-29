@@ -355,8 +355,8 @@ h3 {
   background: #fffaf0;
 }
 
-.hand-slot-box.both-hands-occupied {
-  grid-column: 1 / -1;
+.hand-slot-box.double-hand-slot {
+  min-height: 114px;
 }
 
 .hand-slot-box header {
@@ -376,8 +376,7 @@ h3 {
 }
 
 .hand-item-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
@@ -387,20 +386,17 @@ h3 {
   background: #fffaf0;
 }
 
-.hand-item-row > div:first-child {
-  display: grid;
-  min-width: 0;
-}
-
 .hand-item-row strong,
 .hand-item-row .item-name-button,
-.hand-item-row span {
+.hand-item-row span,
+.item-meta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.hand-item-row span {
+.hand-item-row span,
+.item-meta {
   color: #676054;
   font-size: 0.72rem;
   font-weight: 700;
@@ -426,6 +422,10 @@ h3 {
   border: 1px solid #d8c7aa;
   border-radius: 6px;
   background: #fffaf0;
+}
+
+.fixed-inventory-card {
+  position: relative;
 }
 
 .coin-purse-card header,
@@ -467,6 +467,9 @@ h3 {
 }
 
 .coin-treasure-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
   padding: 0.35rem;
   border: 1px solid #e8dec9;
@@ -475,7 +478,9 @@ h3 {
 }
 
 .coin-treasure-row > div {
-  display: grid;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -523,8 +528,7 @@ h3 {
 }
 
 .inventory-row {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  display: flex;
   align-items: center;
   gap: 0.35rem;
   min-height: 34px;
@@ -536,8 +540,10 @@ h3 {
 }
 
 .inventory-row-name {
-  display: grid;
-  gap: 0.05rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -550,11 +556,72 @@ h3 {
   white-space: nowrap;
 }
 
+.inventory-row > svg,
+.coin-treasure-row > svg {
+  flex: 0 0 auto;
+}
+
+.item-meta {
+  flex: 0 0 auto;
+}
+
 .row-actions {
   display: flex;
   flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 0.25rem;
+}
+
+.drag-handle {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #756a5a;
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.dragging {
+  opacity: 0.45;
+}
+
+.inventory-drag-overlay {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+  width: min(320px, 80vw);
+  padding: 0.35rem;
+  border: 1px solid #c8bda8;
+  border-radius: 6px;
+  background: #fffdf8;
+  box-shadow: 0 14px 32px rgba(28, 24, 19, 0.2);
+}
+
+.inventory-drop-zone {
+  min-height: 32px;
+  border-radius: 6px;
+}
+
+.inventory-drop-zone.drop-over,
+.hand-slot-box.drop-over,
+.inside-drop-zone.drop-over {
+  outline: 2px solid #2e6658;
+  outline-offset: 2px;
+  background: #eef5ea;
+}
+
+.row-drop-over {
+  outline: 2px solid #2e6658;
+  outline-offset: 2px;
+  background: #eef5ea;
 }
 
 .row-actions select {
@@ -1043,7 +1110,9 @@ h3 {
 }
 
 .item-name-button {
+  max-width: 100%;
   min-height: 0;
+  min-width: 0;
   justify-content: flex-start;
   padding: 0;
   border: 0;
@@ -1525,10 +1594,6 @@ h3 {
   .party-stat-grid,
   .party-hand-grid {
     grid-template-columns: 1fr;
-  }
-
-  .inventory-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .inventory-row > svg,

@@ -1,4 +1,22 @@
 import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ArrowRightLeft,
   Backpack,
   Box,
@@ -8,6 +26,7 @@ import {
   EyeOff,
   Flame,
   Gem,
+  GripVertical,
   Hand,
   Package,
   Pencil,
@@ -83,10 +102,17 @@ export function InventoryPage() {
   const spendTurn = useCampaignStore((state) => state.spendTurn);
   const retireEntity = useCampaignStore((state) => state.retireEntity);
   const restoreEntity = useCampaignStore((state) => state.restoreEntity);
+  const moveInventoryEntry = useCampaignStore((state) => state.moveInventoryEntry);
+  const updateInventoryEntry = useCampaignStore((state) => state.updateInventoryEntry);
   const [query, setQuery] = useState("");
   const [itemModalTarget, setItemModalTarget] = useState<ItemModalTarget | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [expandedOtherIds, setExpandedOtherIds] = useState<string[]>([]);
+  const [activeDragEntryId, setActiveDragEntryId] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const tree = useMemo(() => buildInventoryTree(inventoryEntries, catalogs), [inventoryEntries, catalogs]);
   const summaries = useMemo(
@@ -108,8 +134,56 @@ export function InventoryPage() {
     setActionMessage(result.ok ? null : result.message);
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragEntryId(entryIdFromDragId(event.active.id));
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragEntryId(null);
+    const entryId = entryIdFromDragId(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : "";
+    if (!entryId || !overId) return;
+    const activeEntry = inventoryEntries.find((entry) => entry.id === entryId);
+    if (!activeEntry || isCoinPurseEntry(activeEntry, catalogs)) return;
+    const destination = dropDestinationFromId(overId, tree, inventoryEntries, catalogs, entryId);
+    if (!destination || destination.targetEntryId === entryId) return;
+    const resolvedHandSlot = handSlotForDrop(activeEntry, destination.handSlot, catalogs);
+    const resolvedDestination = { ...destination, handSlot: resolvedHandSlot };
+    const orderPlan = inventorySortOrderPlan(tree, resolvedDestination, entryId);
+    const result = await moveInventoryEntry({
+      entryId,
+      entityId: resolvedDestination.entityId,
+      location: resolvedDestination.location,
+      handSlot: resolvedHandSlot,
+      sortOrder: orderPlan.sortOrder
+    });
+    handleResult(result);
+    if (!result.ok) return;
+    await Promise.all(
+      orderPlan.rebalancedEntries.map(({ entry, sortOrder }) =>
+        updateInventoryEntry({
+          ...entry,
+          sortOrder
+        })
+      )
+    );
+  };
+
+  const handleDragCancel = () => {
+    setActiveDragEntryId(null);
+  };
+
+  const activeDragNode = activeDragEntryId ? tree.allNodes.find((node) => node.entry.id === activeDragEntryId) : undefined;
+
   return (
-    <main className="page-stack inventory-page">
+    <DndContext
+      sensors={sensors}
+      collisionDetection={inventoryCollisionDetection}
+      onDragStart={handleDragStart}
+      onDragEnd={(event) => void handleDragEnd(event)}
+      onDragCancel={handleDragCancel}
+    >
+      <main className="page-stack inventory-page">
       <section className="inventory-toolbar panel">
         <div>
           <p className="eyebrow">Inventory</p>
@@ -222,7 +296,11 @@ export function InventoryPage() {
       )}
 
       {itemModalTarget && <ItemModal target={itemModalTarget} onClose={() => setItemModalTarget(null)} onResult={handleResult} />}
-    </main>
+      </main>
+      <DragOverlay>
+        {activeDragNode ? <InventoryDragOverlay node={activeDragNode} catalogs={catalogs} viewMode={viewMode} /> : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
@@ -306,7 +384,7 @@ function EntityInventorySections({
       </div>
 
       <InventorySection title="Hands" icon={<Hand size={15} />}>
-        <HandSlots nodes={handNodes} onEdit={onEdit} />
+        <HandSlots entity={entity} nodes={handNodes} onEdit={onEdit} />
       </InventorySection>
 
       {coinPurseNodes.length > 0 && (
@@ -316,19 +394,23 @@ function EntityInventorySections({
       )}
 
       <InventorySection title={rootInventoryTitle(entity)} icon={<Package size={15} />}>
-        <NodeList
-          nodes={equippedNodes}
-          empty={rootInventoryEmptyLabel(entity)}
-          onEdit={onEdit}
-        />
+        <InventoryDropZone id={rootDropId(entity.id, "equipped")} className="inventory-drop-zone">
+          <NodeList
+            nodes={equippedNodes}
+            empty={rootInventoryEmptyLabel(entity)}
+            onEdit={onEdit}
+          />
+        </InventoryDropZone>
       </InventorySection>
 
       <InventorySection title="Containers" icon={<Backpack size={15} />}>
-        <NodeList
-          nodes={containerNodes}
-          empty="No containers"
-          onEdit={onEdit}
-        />
+        <InventoryDropZone id={rootDropId(entity.id, "containers")} className="inventory-drop-zone">
+          <NodeList
+            nodes={containerNodes}
+            empty="No containers"
+            onEdit={onEdit}
+          />
+        </InventoryDropZone>
       </InventorySection>
     </div>
   );
@@ -357,59 +439,69 @@ function InventorySection({
 }
 
 function HandSlots({
+  entity,
   nodes,
   onEdit
 }: {
+  entity: Entity;
   nodes: InventoryNode[];
   onEdit: (target: EditTarget) => void;
 }) {
   const bothHands = nodes.filter((node) => node.entry.handSlot === "both_hands");
-  const left = nodes.find((node) => node.entry.handSlot === "left_hand");
-  const right = nodes.find((node) => node.entry.handSlot === "right_hand");
+  const left = nodes.filter((node) => node.entry.handSlot === "left_hand");
+  const right = nodes.filter((node) => node.entry.handSlot === "right_hand");
 
   if (bothHands.length) {
     return (
       <div className="hand-slot-stack">
-        <div className="hand-slot-box occupied both-hands-occupied">
-          <header>
-            <span>Both hands</span>
-          </header>
-          <div className="hand-item-list">
-            {bothHands.map((node) => (
-              <HandItemRow key={node.entry.id} node={node} blockedByBoth onEdit={onEdit} />
-            ))}
-          </div>
-        </div>
+        <HandSlotBox entity={entity} label="Both hands" slot="left_hand" nodes={bothHands} blockedByBoth={false} onEdit={onEdit} doubleHeight />
       </div>
     );
   }
 
   return (
     <div className="hand-slot-stack">
-      <HandSlotBox label="Left" node={left} blockedByBoth={false} onEdit={onEdit} />
-      <HandSlotBox label="Right" node={right} blockedByBoth={false} onEdit={onEdit} />
+      <HandSlotBox entity={entity} label="Left" slot="left_hand" nodes={left} blockedByBoth={false} onEdit={onEdit} />
+      <HandSlotBox entity={entity} label="Right" slot="right_hand" nodes={right} blockedByBoth={false} onEdit={onEdit} />
     </div>
   );
 }
 
 function HandSlotBox({
+  entity,
   label,
-  node,
+  slot,
+  nodes,
   blockedByBoth,
-  onEdit
+  onEdit,
+  doubleHeight = false
 }: {
+  entity: Entity;
   label: string;
-  node: InventoryNode | undefined;
+  slot: HandSlot;
+  nodes: InventoryNode[];
   blockedByBoth: boolean;
   onEdit: (target: EditTarget) => void;
+  doubleHeight?: boolean;
 }) {
   return (
-    <div className={node ? "hand-slot-box occupied" : "hand-slot-box"}>
+    <InventoryDropZone
+      id={handDropId(entity.id, slot)}
+      className={`${nodes.length ? "hand-slot-box occupied" : "hand-slot-box"}${doubleHeight ? " double-hand-slot" : ""}`}
+    >
       <header>
         <span>{label}</span>
       </header>
-      {node ? <HandItemRow node={node} blockedByBoth={blockedByBoth} onEdit={onEdit} /> : <p className="empty-row">Empty</p>}
-    </div>
+      {nodes.length ? (
+        <div className="hand-item-list">
+          {nodes.map((node) => (
+            <HandItemRow key={node.entry.id} node={node} blockedByBoth={blockedByBoth} onEdit={onEdit} />
+          ))}
+        </div>
+      ) : (
+        <p className="empty-row">Empty</p>
+      )}
+    </InventoryDropZone>
   );
 }
 
@@ -427,15 +519,20 @@ function HandItemRow({
   const toggleLight = useCampaignStore((state) => state.toggleLight);
   const remaining = turnsRemaining(node.entry, node.item);
   const isDepleted = node.entry.state?.isDepleted === true;
+  const drag = useInventoryDraggable(node.entry.id);
+  const rowDrop = useInventoryRowDrop(node.entry.id);
+  const name = itemRowName(node.entry, catalogs, viewMode);
+  const meta = itemSlotSummary(node.entry, catalogs);
 
   return (
-    <div className="hand-item-row">
-      <div>
+    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("hand-item-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+      <DragHandle drag={drag} label={`Drag ${name}`} />
+      <div className="inventory-row-name">
         <button className="item-name-button" onClick={() => onEdit({ mode: "edit", entry: node.entry, title: `Edit ${displayName(node.entry, catalogs, viewMode)}` })}>
-          {displayName(node.entry, catalogs, viewMode)}
+          {name}
         </button>
-        <span>{blockedByBoth ? "both hands" : `${node.entry.quantity} x ${node.item.type}`}</span>
       </div>
+      <span className="item-meta">{blockedByBoth ? `both hands · ${meta}` : meta}</span>
       {node.item.emitsLight && (
         <div>
           <button
@@ -508,7 +605,7 @@ function CoinPurseCard({
   };
 
   return (
-    <article className="coin-purse-card">
+    <article className="coin-purse-card fixed-inventory-card">
       <header>
         <button className="item-name-button" onClick={() => onEdit({ mode: "edit", entry: node.entry, title: `Edit ${displayName(node.entry, catalogs, viewMode)}` })}>
           {displayName(node.entry, catalogs, viewMode)}
@@ -536,33 +633,117 @@ function CoinPurseCard({
           Save coins
         </button>
       </div>
-      <div className="coin-treasure-list">
+      <InventoryDropZone id={insideDropId(node.entry.id)} className="coin-treasure-list inventory-drop-zone inside-drop-zone">
         {treasureNodes.length ? (
           treasureNodes.map((treasureNode) => (
-            <div className="coin-treasure-row" key={treasureNode.entry.id}>
-              <Gem size={14} />
-              <div>
-                <button
-                  className="item-name-button"
-                  onClick={() =>
-                    onEdit({
-                      mode: "edit",
-                      entry: treasureNode.entry,
-                      title: `Edit ${displayName(treasureNode.entry, catalogs, viewMode)}`
-                    })
-                  }
-                >
-                  {displayName(treasureNode.entry, catalogs, viewMode)}
-                </button>
-                <span>{treasureSummary(treasureNode)}</span>
-              </div>
-            </div>
+            <CoinTreasureRow key={treasureNode.entry.id} node={treasureNode} onEdit={onEdit} />
           ))
         ) : (
           <p className="empty-row">No small treasure</p>
         )}
-      </div>
+      </InventoryDropZone>
     </article>
+  );
+}
+
+function CoinTreasureRow({
+  node,
+  onEdit
+}: {
+  node: InventoryNode;
+  onEdit: (target: EditTarget) => void;
+}) {
+  const catalogs = useCampaignStore((state) => state.catalogs);
+  const viewMode = useCampaignStore((state) => state.viewMode);
+  const drag = useInventoryDraggable(node.entry.id);
+  const rowDrop = useInventoryRowDrop(node.entry.id);
+  const name = itemRowName(node.entry, catalogs, viewMode);
+
+  return (
+    <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("coin-treasure-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+      <DragHandle drag={drag} label={`Drag ${name}`} />
+      <Gem size={14} />
+      <div>
+        <button
+          className="item-name-button"
+          onClick={() =>
+            onEdit({
+              mode: "edit",
+              entry: node.entry,
+              title: `Edit ${displayName(node.entry, catalogs, viewMode)}`
+            })
+          }
+        >
+          {name}
+        </button>
+      </div>
+      <span className="item-meta">{treasureSummary(node, catalogs)}</span>
+    </div>
+  );
+}
+
+type InventoryDragHandle = ReturnType<typeof useInventoryDraggable>;
+
+function useInventoryDraggable(entryId: string) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: dragEntryId(entryId),
+    data: { type: "inventory-entry", entryId }
+  });
+  return {
+    attributes,
+    listeners,
+    setNodeRef,
+    isDragging,
+    style: {
+      transform: CSS.Translate.toString(transform)
+    } as React.CSSProperties
+  };
+}
+
+function useInventoryRowDrop(entryId: string) {
+  const { setNodeRef, isOver } = useDroppable({ id: rowDropId(entryId) });
+  return { setNodeRef, isOver };
+}
+
+function mergeRefs<T>(...refs: Array<(node: T | null) => void>) {
+  return (node: T | null) => {
+    refs.forEach((ref) => ref(node));
+  };
+}
+
+function rowClassName(base: string, dragging: boolean, over: boolean): string {
+  return [base, dragging ? "dragging" : "", over ? "row-drop-over" : ""].filter(Boolean).join(" ");
+}
+
+function DragHandle({ drag, label }: { drag: InventoryDragHandle; label: string }) {
+  return (
+    <button
+      className="drag-handle"
+      type="button"
+      title={label}
+      aria-label={label}
+      {...drag.attributes}
+      {...drag.listeners}
+    >
+      <GripVertical size={14} />
+    </button>
+  );
+}
+
+function InventoryDropZone({
+  id,
+  className,
+  children
+}: {
+  id: string;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={isOver ? `${className} drop-over` : className}>
+      {children}
+    </div>
   );
 }
 
@@ -606,35 +787,37 @@ function InventoryNodeRow({
   const [expanded, setExpanded] = useState(true);
   const remaining = turnsRemaining(node.entry, node.item);
   const isDepleted = node.entry.state?.isDepleted === true;
-  const currentLocation: InventoryLocation = isInventoryLocation(node.entry.location) ? node.entry.location : { kind: "equipped" };
   const coins = coinBreakdownForEntry(node.entry, catalogs);
   const isContainer = node.item.type === "container";
   const hasRowActions = node.item.emitsLight || (node.entry.quantity > 1 && !coins);
+  const drag = useInventoryDraggable(node.entry.id);
+  const rowDrop = useInventoryRowDrop(node.entry.id);
+  const name = itemRowName(node.entry, catalogs, viewMode);
+  const meta = coins ? coinBreakdownSummary(coins) : itemSlotSummary(node.entry, catalogs);
 
   return (
     <div className={isContainer ? "inventory-node container-node" : "inventory-node"} style={{ "--depth": depth } as React.CSSProperties}>
-      <div className="inventory-row">
-        <button
-          className={node.children.length ? "icon-button" : "icon-button muted"}
-          onClick={() => setExpanded((value) => !value)}
-          disabled={!node.children.length}
-          title={expanded ? "Collapse" : "Expand"}
-        >
-          {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </button>
+      <div ref={mergeRefs(drag.setNodeRef, rowDrop.setNodeRef)} className={rowClassName("inventory-row", drag.isDragging, rowDrop.isOver)} style={drag.style}>
+        <DragHandle drag={drag} label={`Drag ${name}`} />
+        {node.children.length ? (
+          <button
+            className="icon-button"
+            onClick={() => setExpanded((value) => !value)}
+            title={expanded ? "Collapse" : "Expand"}
+          >
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        ) : null}
         <Box size={15} />
         <div className="inventory-row-name">
           <button className="item-name-button" onClick={() => onEdit({ mode: "edit", entry: node.entry, title: `Edit ${displayName(node.entry, catalogs, viewMode)}` })}>
-            {displayName(node.entry, catalogs, viewMode)}
+            {name}
           </button>
-          <span>
-            {coins ? coinBreakdownSummary(coins) : `${node.entry.quantity} x ${node.item.type}`} · {entrySlots(node.entry, catalogs)} slots · {locationLabel(currentLocation)}
-            {node.entry.handSlot ? ` · ${node.entry.handSlot.replace("_", " ")}` : ""}
-          </span>
         </div>
+        <span className="item-meta">{meta}</span>
         {isContainer && (
           <span className={node.overCapacity ? "capacity over" : "capacity"}>
-            {node.usedSlots}/{node.capacitySlots} · {node.item.container?.loadCategory ?? "stowed"}
+            {node.usedSlots}/{node.capacitySlots}
           </span>
         )}
         {hasRowActions && (
@@ -1412,9 +1595,19 @@ function coinBreakdownSummary(coins: CoinBreakdown): string {
   return parts.length ? parts.join(", ") : "0 coins";
 }
 
-function treasureSummary(node: InventoryNode): string {
+function treasureSummary(node: InventoryNode, catalogs: Catalogs): string {
   const value = node.item.gpValue !== null && node.item.gpValue !== undefined ? ` · ${node.item.gpValue} gp` : "";
-  return `${node.entry.quantity} x treasure${value}`;
+  return `${itemSlotSummary(node.entry, catalogs)}${value}`;
+}
+
+function itemRowName(entry: InventoryEntry, catalogs: Catalogs, viewMode: ViewMode): string {
+  const name = displayName(entry, catalogs, viewMode);
+  return entry.quantity > 1 ? `${name} (x${entry.quantity})` : name;
+}
+
+function itemSlotSummary(entry: InventoryEntry, catalogs: Catalogs): string {
+  const slots = entrySlots(entry, catalogs);
+  return `${slots} slot${slots === 1 ? "" : "s"}`;
 }
 
 function containersForMove(node: InventoryNode, allContainerNodes: InventoryNode[]): InventoryNode[] {
@@ -1442,12 +1635,170 @@ function placementSummary(entry: InventoryEntry, catalogs: Catalogs, viewMode: V
   return `${entityName} · ${rootInventoryTitle(entities.find((entity) => entity.id === entry.entityId))}`;
 }
 
-function locationLabel(location: InventoryLocation): string {
-  return isInventoryLocation(location) && location.kind === "contained" ? "inside" : "equipped";
-}
-
 function loadSummary(summary: ReturnType<typeof summarizeEntity> | undefined): string {
   if (!summary) return "0 slots";
   const capacity = summary.capacitySlots !== null && summary.capacitySlots !== undefined ? `/${summary.capacitySlots}` : "";
   return `${summary.carriedSlots}${capacity} slots`;
+}
+
+type InventoryDropDestination = {
+  entityId: string;
+  location: InventoryLocation;
+  handSlot: HandSlot | null;
+  targetEntryId?: string;
+};
+
+type InventorySortOrderPlan = {
+  sortOrder: number;
+  rebalancedEntries: Array<{ entry: InventoryEntry; sortOrder: number }>;
+};
+
+const inventoryCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  const rectangleCollisions = rectIntersection(args);
+  return rectangleCollisions.length > 0 ? rectangleCollisions : closestCenter(args);
+};
+
+function InventoryDragOverlay({ node, catalogs, viewMode }: { node: InventoryNode; catalogs: Catalogs; viewMode: ViewMode }) {
+  return (
+    <div className="inventory-drag-overlay">
+      <GripVertical size={14} />
+      <Box size={15} />
+      <div className="inventory-row-name">
+        <strong>{displayName(node.entry, catalogs, viewMode)}</strong>
+        <span>
+          {node.entry.quantity} x {node.item.type} · {entrySlots(node.entry, catalogs)} slots
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function dragEntryId(entryId: string): string {
+  return `entry:${entryId}`;
+}
+
+function entryIdFromDragId(id: unknown): string | null {
+  const value = String(id);
+  return value.startsWith("entry:") ? value.slice("entry:".length) : null;
+}
+
+function rootDropId(entityId: string, surface: string): string {
+  return `root:${entityId}:${surface}`;
+}
+
+function handDropId(entityId: string, slot: HandSlot): string {
+  return `hand:${entityId}:${slot}`;
+}
+
+function insideDropId(entryId: string): string {
+  return `inside:${entryId}`;
+}
+
+function rowDropId(entryId: string): string {
+  return `row:${entryId}`;
+}
+
+function dropDestinationFromId(
+  overId: string,
+  tree: ReturnType<typeof buildInventoryTree>,
+  entries: InventoryEntry[],
+  catalogs: Catalogs,
+  activeEntryId: string
+): InventoryDropDestination | null {
+  const [kind, id, slot] = overId.split(":");
+  if (kind === "root" && id) {
+    return { entityId: id, location: { kind: "equipped" }, handSlot: null };
+  }
+  if (kind === "hand" && id && isHandSlot(slot)) {
+    return { entityId: id, location: { kind: "equipped" }, handSlot: slot };
+  }
+  if (kind === "inside" && id) {
+    const container = entries.find((entry) => entry.id === id);
+    if (!container) return null;
+    return { entityId: container.entityId, location: { kind: "contained", parentEntryId: container.id }, handSlot: null };
+  }
+  if (kind === "row" && id) {
+    const targetNode = tree.allNodes.find((node) => node.entry.id === id);
+    if (!targetNode) return null;
+    const target = targetNode.entry;
+    if (targetNode.item.type === "container" && !isCoinPurseEntry(target, catalogs) && target.id !== activeEntryId) {
+      return { entityId: target.entityId, location: { kind: "contained", parentEntryId: target.id }, handSlot: null };
+    }
+    const location: InventoryLocation = isInventoryLocation(target.location) ? target.location : { kind: "equipped" };
+    return {
+      entityId: target.entityId,
+      location,
+      handSlot: location.kind === "equipped" ? target.handSlot ?? null : null,
+      targetEntryId: target.id
+    };
+  }
+  return null;
+}
+
+function inventorySortOrderPlan(
+  tree: ReturnType<typeof buildInventoryTree>,
+  destination: InventoryDropDestination,
+  activeEntryId: string
+): InventorySortOrderPlan {
+  const destinationNodes = nodesForDestination(tree, destination).filter((node) => node.entry.id !== activeEntryId);
+  if (!destination.targetEntryId) {
+    return { sortOrder: nextTrailingSortOrder(destinationNodes), rebalancedEntries: [] };
+  }
+  const targetIndex = destinationNodes.findIndex((node) => node.entry.id === destination.targetEntryId);
+  if (targetIndex === -1) return { sortOrder: nextTrailingSortOrder(destinationNodes), rebalancedEntries: [] };
+  return sortOrderAtIndex(destinationNodes, targetIndex + 1);
+}
+
+function nodesForDestination(tree: ReturnType<typeof buildInventoryTree>, destination: InventoryDropDestination): InventoryNode[] {
+  return flattenNodes(tree.byEntityId[destination.entityId] ?? []).filter((node) => {
+    const location: InventoryLocation = isInventoryLocation(node.entry.location) ? node.entry.location : { kind: "equipped" };
+    return sameInventoryLocation(location, destination.location) && (node.entry.handSlot ?? null) === destination.handSlot;
+  });
+}
+
+function sortOrderAtIndex(nodes: InventoryNode[], insertIndex: number): InventorySortOrderPlan {
+  const positioned = nodes.map((node, index) => ({
+    entry: node.entry,
+    sortOrder: normalizedSortOrder(node.entry.sortOrder) ?? (index + 1) * 10
+  }));
+  const previous = positioned[insertIndex - 1]?.sortOrder;
+  const next = positioned[insertIndex]?.sortOrder;
+  if (previous === undefined && next === undefined) return { sortOrder: 10, rebalancedEntries: [] };
+  if (previous === undefined) return { sortOrder: next - 10, rebalancedEntries: [] };
+  if (next === undefined) return { sortOrder: previous + 10, rebalancedEntries: [] };
+  if (next - previous > 1) return { sortOrder: previous + (next - previous) / 2, rebalancedEntries: [] };
+  return {
+    sortOrder: (insertIndex + 1) * 10,
+    rebalancedEntries: positioned.map(({ entry }, index) => ({
+      entry,
+      sortOrder: index < insertIndex ? (index + 1) * 10 : (index + 2) * 10
+    }))
+  };
+}
+
+function nextTrailingSortOrder(nodes: InventoryNode[]): number {
+  if (!nodes.length) return 10;
+  return nodes.reduce((max, node, index) => Math.max(max, normalizedSortOrder(node.entry.sortOrder) ?? (index + 1) * 10), 0) + 10;
+}
+
+function normalizedSortOrder(value: number | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function handSlotForDrop(entry: InventoryEntry, requestedSlot: HandSlot | null, catalogs: Catalogs): HandSlot | null {
+  if (!requestedSlot) return null;
+  const item = entryItem(entry, catalogs);
+  return (item.handsRequired ?? 0) >= 2 ? "both_hands" : requestedSlot;
+}
+
+function sameInventoryLocation(left: InventoryLocation, right: InventoryLocation): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "equipped") return true;
+  return right.kind === "contained" && left.parentEntryId === right.parentEntryId;
+}
+
+function isHandSlot(value: string | undefined): value is HandSlot {
+  return value === "left_hand" || value === "right_hand" || value === "both_hands";
 }

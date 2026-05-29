@@ -201,6 +201,22 @@ describe("campaign inventory item actions", () => {
     expect(torches[0].quantity).toBe(3);
   });
 
+  it("explains when a move needs two free hands", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-borin-rope",
+      entityId: "entity-borin",
+      location: { kind: "equipped" },
+      handSlot: "both_hands"
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: "That item needs two free hands; blocked by Shield, Sword."
+    });
+  });
+
   it("rejects moving non-zero-slot items into a coin purse", async () => {
     await initializeStore();
 
@@ -216,6 +232,121 @@ describe("campaign inventory item actions", () => {
     expect(result.ok).toBe(false);
     expect(result).toEqual({ ok: false, message: "Coin purses can only hold coins and zero-slot treasure." });
     expect(torch?.location).toEqual({ kind: "contained", parentEntryId: "entry-mira-backpack" });
+  });
+
+  it("moves an item with a supplied sort order", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-mira-dagger",
+      entityId: "entity-mira",
+      location: { kind: "equipped" },
+      handSlot: null,
+      sortOrder: 15
+    });
+
+    const dagger = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-dagger");
+
+    expect(result.ok).toBe(true);
+    expect(dagger?.handSlot).toBeNull();
+    expect(dagger?.sortOrder).toBe(15);
+  });
+
+  it("reorders an item within root inventory", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-borin-rope",
+      entityId: "entity-borin",
+      location: { kind: "equipped" },
+      handSlot: null,
+      sortOrder: 5
+    });
+
+    const rope = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-borin-rope");
+
+    expect(result.ok).toBe(true);
+    expect(rope?.location).toEqual({ kind: "equipped" });
+    expect(rope?.sortOrder).toBe(5);
+  });
+
+  it("reorders an item inside a container", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-mira-torch",
+      entityId: "entity-mira",
+      location: { kind: "contained", parentEntryId: "entry-mira-backpack" },
+      handSlot: null,
+      sortOrder: 5
+    });
+
+    const torch = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-torch");
+
+    expect(result.ok).toBe(true);
+    expect(torch?.location).toEqual({ kind: "contained", parentEntryId: "entry-mira-backpack" });
+    expect(torch?.sortOrder).toBe(5);
+  });
+
+  it("moves a container between entities while preserving descendants", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-mira-backpack",
+      entityId: "entity-borin",
+      location: { kind: "equipped" },
+      handSlot: null,
+      sortOrder: 40
+    });
+
+    const backpack = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-backpack");
+    const torch = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-torch");
+
+    expect(result.ok).toBe(true);
+    expect(backpack?.entityId).toBe("entity-borin");
+    expect(backpack?.sortOrder).toBe(40);
+    expect(torch?.entityId).toBe("entity-borin");
+    expect(torch?.location).toEqual({ kind: "contained", parentEntryId: "entry-mira-backpack" });
+    expect(torch?.handSlot).toBeNull();
+  });
+
+  it("rejects invalid coin purse drops without changing location or order", async () => {
+    await initializeStore();
+    await useCampaignStore.getState().updateInventoryEntry({
+      ...useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-torch")!,
+      sortOrder: 25
+    });
+
+    const result = await useCampaignStore.getState().moveInventoryEntry({
+      entryId: "entry-mira-torch",
+      entityId: "entity-mira",
+      location: { kind: "contained", parentEntryId: "entry-mira-pouch" },
+      handSlot: null,
+      sortOrder: 5
+    });
+
+    const torch = useCampaignStore.getState().inventoryEntries.find((entry) => entry.id === "entry-mira-torch");
+
+    expect(result.ok).toBe(false);
+    expect(torch?.location).toEqual({ kind: "contained", parentEntryId: "entry-mira-backpack" });
+    expect(torch?.sortOrder).toBe(25);
+  });
+
+  it("assigns new inventory entries a trailing sort order", async () => {
+    await initializeStore();
+
+    const result = await useCampaignStore.getState().addCatalogItem({
+      entityId: "entity-mira",
+      itemTemplateId: "item_rope_50_047",
+      quantity: 1,
+      location: { kind: "equipped" },
+      handSlot: null
+    });
+
+    const rope = useCampaignStore.getState().inventoryEntries.find((entry) => entry.itemTemplateId === "item_rope_50_047" && entry.entityId === "entity-mira");
+
+    expect(result.ok).toBe(true);
+    expect(rope?.sortOrder).toBe(30);
   });
 
   it("splits one lit unit from a stack without making inventory light effective", async () => {

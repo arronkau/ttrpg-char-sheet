@@ -110,6 +110,30 @@ describe("slot and encumbrance rules", () => {
 });
 
 describe("inventory tree behavior", () => {
+  it("honors manual sort order for sibling entries", () => {
+    const entries = [
+      { ...inventory("torch", "entity", "item_torch_056", 1, { kind: "equipped" }), sortOrder: 30 },
+      { ...inventory("pack", "entity", "item_backpack_001", 1, { kind: "equipped" }), sortOrder: 20 },
+      { ...inventory("dagger", "entity", "item_dagger_079", 1, { kind: "equipped" }), sortOrder: 10 }
+    ];
+
+    const tree = buildInventoryTree(entries, catalogs);
+
+    expect(tree.byEntityId.entity.map((node) => node.entry.id)).toEqual(["dagger", "pack", "torch"]);
+  });
+
+  it("keeps legacy sibling ordering when sort order is absent", () => {
+    const entries = [
+      inventory("torch", "entity", "item_torch_056", 1, { kind: "equipped" }),
+      inventory("pack", "entity", "item_backpack_001", 1, { kind: "equipped" }),
+      inventory("dagger", "entity", "item_dagger_079", 1, { kind: "equipped" })
+    ];
+
+    const tree = buildInventoryTree(entries, catalogs);
+
+    expect(tree.byEntityId.entity.map((node) => node.entry.id)).toEqual(["pack", "dagger", "torch"]);
+  });
+
   it("builds contained item trees and marks over-capacity containers", () => {
     const entries = [
       inventory("pouch", "entity", "item_belt_pouch_005", 1, { kind: "equipped" }),
