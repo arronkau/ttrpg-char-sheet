@@ -1635,9 +1635,9 @@ h3 {
   }
 }
 
-/* Character sheet: OSE-inspired table layout. Scoped to CharacterPage. */
+/* Character sheet: clean three-column sheet layout. Scoped to CharacterPage. */
 .sheet-page {
-  grid-template-columns: minmax(760px, 1fr);
+  grid-template-columns: minmax(860px, 1fr);
   align-items: start;
 }
 
@@ -1668,91 +1668,149 @@ h3 {
 .ose-sheet {
   min-width: 0;
   padding: 1rem;
-  border: 2px solid #2f2b25;
-  border-radius: 4px;
+  border: 1px solid #d9d2c5;
+  border-radius: 14px;
   background: #fffdf8;
   box-shadow: 0 12px 30px rgba(43, 36, 26, 0.08);
 }
 
 .sheet-identity-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 0.45fr 0.65fr;
-  gap: 0.6rem 0.75rem;
-  padding-bottom: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  padding-bottom: 0.9rem;
   border-bottom: 2px solid #2f2b25;
 }
 
-.sheet-grid-main {
+.sheet-identity-card {
   display: grid;
-  grid-template-columns: minmax(260px, 0.75fr) minmax(420px, 1.25fr);
-  gap: 0.75rem;
-  padding-top: 0.75rem;
+  align-content: start;
+  gap: 0.25rem;
+  min-height: 76px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d8d0c0;
+  border-radius: 10px;
+  background: #fffefa;
+}
+
+.sheet-identity-card h1,
+.sheet-identity-card h2,
+.sheet-identity-card p {
+  margin: 0;
+}
+
+.sheet-identity-card h1 {
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+.sheet-identity-card h2 {
+  color: #211d18;
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sheet-identity-card p {
+  color: #241f19;
+  font-size: 1rem;
+  font-weight: 850;
+}
+
+.character-title-card p {
+  color: #5f574c;
+  font-size: 0.95rem;
+}
+
+.sheet-identity-card span {
+  color: #676054;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sheet-identity-card input,
+.sheet-identity-card select {
+  min-height: 34px;
+  border: 1px solid #d8d0c0;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #241f19;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.character-sheet-columns {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.78fr) minmax(0, 2fr);
+  gap: 0.8rem;
+  padding-top: 0.9rem;
+}
+
+.sheet-left-column,
+.sheet-right-area,
+.sheet-notes-area {
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+}
+
+.sheet-right-area {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .sheet-box {
   min-width: 0;
-  padding: 0.7rem;
-  border: 1.5px solid #2f2b25;
+  padding: 0.75rem;
+  border: 1px solid #d8d0c0;
+  border-radius: 10px;
   background: #fffefa;
 }
 
 .sheet-box h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.55rem;
+  color: #211d18;
+  font-size: 0.88rem;
   font-weight: 900;
   letter-spacing: 0.01em;
   text-transform: uppercase;
 }
 
-.abilities-box,
-.movement-box,
-.saves-box,
-.skills-box {
-  grid-column: 1;
+.combat-box,
+.turn-box,
+.spell-slots-box {
+  grid-column: 1 / -1;
 }
 
 .features-box,
-.combat-box,
 .inventory-sheet-box {
-  grid-column: 2;
+  min-height: 260px;
 }
 
-.combat-box {
-  grid-row: 1;
-}
-
-.features-box {
-  grid-row: 2 / span 3;
-  min-height: 310px;
-}
-
-.inventory-sheet-box {
-  grid-column: 1 / -1;
+.sheet-notes-area {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.8rem;
 }
 
 .sheet-field {
   display: grid;
   gap: 0.2rem;
   color: #2f2b25;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
-}
-
-.sheet-field span {
-  color: #2f2b25;
 }
 
 .sheet-field input,
 .sheet-field select,
 .sheet-field output {
   min-height: 34px;
-  border-width: 0 0 1.5px 0;
-  border-color: #2f2b25;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid #d8d0c0;
+  border-radius: 8px;
+  background: #fffaf0;
+  color: #241f19;
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 750;
 }
 
 .sheet-field output {
@@ -1761,10 +1819,21 @@ h3 {
   padding: 0.45rem 0.55rem;
 }
 
+.sheet-inline-edit {
+  display: grid;
+  grid-template-columns: 1fr 0.55fr;
+  gap: 0.4rem;
+}
+
+.sheet-inline-edit.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .ability-table,
 .skill-table,
-.feature-text,
-.sheet-inventory-list {
+.feature-list,
+.sheet-inventory-list,
+.known-spell-list {
   display: grid;
   gap: 0.35rem;
 }
@@ -1772,36 +1841,34 @@ h3 {
 .ability-table-head,
 .ability-row {
   display: grid;
-  grid-template-columns: minmax(110px, 1fr) 72px 60px;
+  grid-template-columns: minmax(105px, 1fr) 52px 46px;
   align-items: center;
   gap: 0.35rem;
 }
 
-.ability-table-head {
+.ability-table-head,
+.skill-table-head {
   color: #676054;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .ability-row span {
-  font-size: 0.86rem;
-  font-weight: 800;
+  font-size: 0.84rem;
+  font-weight: 850;
 }
 
 .ability-row em {
-  float: right;
-  color: #777064;
-  font-size: 0.7rem;
-  font-style: normal;
+  display: none;
 }
 
 .ability-row input,
 .ability-row output {
-  min-height: 32px;
-  border: 1px solid #2f2b25;
-  border-radius: 0;
-  background: #fffdf8;
+  min-height: 30px;
+  border: 1px solid #d8d0c0;
+  border-radius: 7px;
+  background: #fffaf0;
   text-align: center;
   font-weight: 900;
 }
@@ -1811,22 +1878,71 @@ h3 {
   place-items: center;
 }
 
-.combat-grid,
-.movement-grid {
+.save-list,
+.combat-summary-grid,
+.spell-slot-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
-}
-
-.sheet-save-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
 }
 
-.sheet-save-grid > div {
-  border-color: #2f2b25;
-  border-radius: 0;
-  background: #fffdf8;
+.sheet-save-grid {
+  grid-template-columns: 1fr;
+}
+
+.save-list > div,
+.spell-slot-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 32px;
+  padding: 0.3rem 0.45rem;
+  border-bottom: 1px solid #e4dccd;
+}
+
+.combat-summary-grid {
+  grid-template-columns: minmax(180px, 0.85fr) minmax(260px, 1.15fr);
+  gap: 0.75rem;
+}
+
+.combat-stat-column,
+.combat-hand-column {
+  display: grid;
+  align-content: start;
+  gap: 0.35rem;
+}
+
+.combat-stat-column > div,
+.combat-hand-column > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 32px;
+  padding: 0.3rem 0.45rem;
+  border-bottom: 1px solid #e4dccd;
+}
+
+.save-list span,
+.combat-summary-grid span,
+.spell-slot-grid span,
+.turn-row span {
+  color: #5f574c;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.save-list strong,
+.combat-summary-grid strong,
+.spell-slot-grid strong,
+.turn-row strong,
+.turn-row em {
+  color: #211d18;
+  font-size: 0.9rem;
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
 }
 
 .sheet-box-header,
@@ -1851,20 +1967,22 @@ h3 {
   align-items: center;
   gap: 0.3rem;
   color: #5f574c;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .skill-table > div,
-.sheet-inventory-node > div:first-child {
+.sheet-inventory-node > div:first-child,
+.known-spell-list span {
   min-height: 30px;
   padding: 0.25rem 0.35rem;
-  border-bottom: 1px solid #cfc6b4;
+  border-bottom: 1px solid #e4dccd;
 }
 
 .skill-table span,
-.sheet-inventory-node span {
+.sheet-inventory-node span,
+.known-spell-list span {
   min-width: 0;
   overflow: hidden;
   font-weight: 800;
@@ -1887,35 +2005,22 @@ h3 {
 
 .skill-table-with-points > div {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 70px 52px 70px;
+  grid-template-columns: minmax(96px, 1fr) 50px 46px 50px;
   align-items: center;
 }
 
 .skill-table-with-points input {
-  width: 44px;
+  width: 40px;
   min-height: 28px;
   padding: 0.2rem;
-  border: 1px solid #2f2b25;
-  border-radius: 0;
-  background: #fffdf8;
+  border: 1px solid #d8d0c0;
+  border-radius: 7px;
+  background: #fffaf0;
   text-align: center;
   font-weight: 900;
 }
 
-.skill-table-head {
-  color: #676054;
-  font-size: 0.7rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.skill-points-note {
-  margin: 0 0 0.45rem;
-  color: #7b3027;
-  font-size: 0.8rem;
-  font-weight: 900;
-}
-
+.skill-points-note,
 .sheet-subhead,
 .sheet-help {
   color: #5f574c;
@@ -1924,24 +2029,64 @@ h3 {
   line-height: 1.35;
 }
 
-.sheet-help {
-  margin-top: 0.55rem;
+.skill-points-note {
+  margin: 0 0 0.45rem;
+  color: #7b3027;
+  font-weight: 900;
 }
 
-.feature-text {
-  max-height: 210px;
+.sheet-help {
+  margin: 0.55rem 0 0;
+}
+
+.feature-list {
+  max-height: 520px;
   overflow: auto;
-  margin: 0.5rem 0 0.75rem;
-  padding: 0.55rem;
-  border: 1px solid #cfc6b4;
-  background: #fffaf0;
+}
+
+.feature-list article {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid #e4dccd;
+}
+
+.feature-list h4 {
+  margin: 0 0 0.2rem;
+  color: #211d18;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.feature-list p {
+  margin: 0;
   color: #312d27;
   font-size: 0.82rem;
   line-height: 1.38;
 }
 
+.turn-table-placeholder {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.turn-row {
+  display: grid;
+  grid-template-columns: 80px repeat(7, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.turn-row strong,
+.turn-row em {
+  min-height: 28px;
+  padding: 0.25rem;
+  border: 1px solid #e4dccd;
+  border-radius: 7px;
+  background: #fffaf0;
+  text-align: center;
+}
+
 .notes-block {
-  margin-top: 0.6rem;
+  margin-top: 0;
   color: #2f2b25;
   font-size: 0.74rem;
   font-weight: 900;
@@ -1949,35 +2094,19 @@ h3 {
 }
 
 .notes-block textarea {
-  min-height: 86px;
-  border-radius: 0;
+  min-height: 110px;
+  border-radius: 8px;
 }
 
 .inventory-sheet-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
   gap: 0.65rem;
 }
 
 .sheet-inventory-list h4 {
   margin: 0;
   font-size: 0.86rem;
-}
-
-.load-track {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.35rem;
-  margin-top: 0.65rem;
-  color: #676054;
-  font-size: 0.75rem;
-  font-weight: 900;
-  text-align: center;
-}
-
-.load-track span {
-  border-top: 2px solid #2f2b25;
-  padding-top: 0.25rem;
 }
 
 .sheet-inventory-node {
@@ -2001,16 +2130,12 @@ h3 {
 
 .sheet-inventory-node.container-node > div:first-child {
   background: #fffaf0;
+  border-radius: 7px;
 }
 
 .sheet-inventory-children {
   display: grid;
   gap: 0.2rem;
-}
-
-.sheet-sidebar {
-  position: sticky;
-  top: 1rem;
 }
 
 .todo-list {
@@ -2032,38 +2157,36 @@ h3 {
 
 @media (max-width: 1180px) {
   .sheet-page,
-  .sheet-grid-main {
+  .character-sheet-columns,
+  .sheet-right-area {
     grid-template-columns: 1fr;
   }
 
-  .features-box,
-  .inventory-sheet-box,
-  .abilities-box,
   .combat-box,
-  .movement-box,
-  .saves-box,
-  .skills-box {
+  .turn-box,
+  .spell-slots-box,
+  .features-box,
+  .inventory-sheet-box {
     grid-column: auto;
-    grid-row: auto;
   }
 
-  .sheet-sidebar {
-    position: static;
+  .combat-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
   .sheet-toolbar,
   .sheet-identity-grid,
+  .sheet-notes-area,
   .inventory-sheet-grid {
     display: grid;
     grid-template-columns: 1fr;
   }
 
-  .combat-grid,
-  .movement-grid,
-  .sheet-save-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .combat-summary-grid,
+  .turn-row {
+    grid-template-columns: 1fr;
   }
 }
 

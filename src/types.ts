@@ -220,6 +220,7 @@ export type ClassDefinition = {
     } | null;
   };
   spellcasting_type?: string | null;
+  spellcasting_notes?: string[];
   levels: ClassLevel[];
   feature_progression?: {
     skills_by_level?: Record<string, Record<string, number | string>>;

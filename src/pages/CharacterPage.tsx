@@ -88,6 +88,12 @@ export function CharacterPage() {
   const skillPointsEnabled = entity.skills?.skillPointsEnabled === true;
   const availableSkillPoints = expertisePointsForLevel(classDef, summary.level);
   const remainingSkillPoints = unspentSkillPoints(entity, classDef, summary.level);
+  const levelDef = classDef?.levels.find((level) => level.level === summary.level);
+  const spellSlots = levelDef?.spells ?? null;
+  const isSpellcaster = Boolean(classDef?.proficiencies?.spell_list || classDef?.spellcasting_type || spellSlots);
+  const canTurnUndead = /turn(?:ing)? undead|turn undead/i.test(classDef?.feature_text_raw ?? "");
+  const leftHandItem = equippedNodes.find((node) => node.entry.handSlot === "left_hand" || node.entry.handSlot === "both_hands");
+  const rightHandItem = equippedNodes.find((node) => node.entry.handSlot === "right_hand" || node.entry.handSlot === "both_hands");
 
   return (
     <main className="page-grid sheet-page">
@@ -123,166 +129,160 @@ export function CharacterPage() {
 
       <section className="ose-sheet">
         <header className="sheet-identity-grid">
-          <SheetField label="Name">
-            {isEditing ? <input value={entity.name} onChange={(event) => patchEntity({ name: event.target.value })} /> : <output>{entity.name}</output>}
-          </SheetField>
-          <SheetField label="Class">
+          <section className="sheet-identity-card character-title-card">
             {isEditing ? (
-              <select value={entity.classId ?? ""} onChange={(event) => patchEntity({ classId: event.target.value })}>
-                <option value="">None</option>
-                {catalogs.classes.map((candidate) => (
-                  <option value={candidate.id} key={candidate.id}>
-                    {candidate.class_name}
-                  </option>
-                ))}
-              </select>
+              <>
+                <input value={entity.name} onChange={(event) => patchEntity({ name: event.target.value })} aria-label="Character name" />
+                <div className="sheet-inline-edit">
+                  <select value={entity.classId ?? ""} onChange={(event) => patchEntity({ classId: event.target.value })} aria-label="Class">
+                    <option value="">None</option>
+                    {catalogs.classes.map((candidate) => (
+                      <option value={candidate.id} key={candidate.id}>{candidate.class_name}</option>
+                    ))}
+                  </select>
+                  <input value={entity.alignment ?? ""} onChange={(event) => patchEntity({ alignment: event.target.value })} placeholder="Alignment" aria-label="Alignment" />
+                </div>
+              </>
             ) : (
-              <output>{classDef?.class_name ?? "-"}</output>
+              <>
+                <h1>{entity.name}</h1>
+                <p>{classDef?.class_name ?? "-"} {summary.level ?? "-"} ({entity.alignment ?? "-"})</p>
+              </>
             )}
-          </SheetField>
-          <SheetField label="Level">
-            <output>{summary.level ?? "-"}</output>
-          </SheetField>
-          <SheetField label="Next Level">
-            <output>{summary.xpForNextLevel ?? "Max"}</output>
-          </SheetField>
-          <SheetField label="Alignment">
-            {isEditing ? <input value={entity.alignment ?? ""} onChange={(event) => patchEntity({ alignment: event.target.value })} /> : <output>{entity.alignment ?? "-"}</output>}
-          </SheetField>
-          <SheetField label="XP">
-            <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.xp ?? 0} onChange={(event) => patchEntity({ xp: Number(event.target.value) })} />
-          </SheetField>
-          <SheetField label="Player">
-            {isEditing ? <input value={entity.playerName ?? ""} onChange={(event) => patchEntity({ playerName: event.target.value })} /> : <output>{entity.playerName ?? "-"}</output>}
-          </SheetField>
+          </section>
+
+          <section className="sheet-identity-card">
+            <h2>Hit Points</h2>
+            {isEditing ? (
+              <div className="sheet-inline-edit two">
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.hp?.currentHp ?? 0} onChange={(event) => patchEntity({ hp: { currentHp: Number(event.target.value), maxHp: entity.hp?.maxHp ?? 1 } })} aria-label="Current hit points" />
+                <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.hp?.maxHp ?? 1} onChange={(event) => patchEntity({ hp: { currentHp: entity.hp?.currentHp ?? 1, maxHp: Number(event.target.value) } })} aria-label="Maximum hit points" />
+              </div>
+            ) : (
+              <p>{entity.hp?.currentHp ?? 0} / {entity.hp?.maxHp ?? 1} <span>HD {classHitDice(classDef, entity.xp) ?? "-"}</span></p>
+            )}
+          </section>
+
+          <section className="sheet-identity-card">
+            <h2>Experience</h2>
+            {isEditing ? (
+              <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.xp ?? 0} onChange={(event) => patchEntity({ xp: Number(event.target.value) })} aria-label="Experience points" />
+            ) : (
+              <p>{entity.xp ?? 0} / {summary.xpForNextLevel ?? "Max"}</p>
+            )}
+          </section>
         </header>
 
-        <div className="sheet-grid-main">
-          <section className="sheet-box abilities-box">
-            <h3>Ability Scores</h3>
-            <AbilityTable entity={entity} patchEntity={patchEntity} isEditing={isEditing} />
-            <p className="sheet-help">Ability checks: roll 1d6, add modifier, target 4.</p>
-          </section>
+        <div className="character-sheet-columns">
+          <aside className="sheet-left-column">
+            <section className="sheet-box abilities-box">
+              <h3>Ability Scores</h3>
+              <AbilityTable entity={entity} patchEntity={patchEntity} isEditing={isEditing} />
+            </section>
 
-          <section className="sheet-box combat-box">
-            <h3>Combat</h3>
-            <div className="combat-grid">
-              <SheetField label="HP Current">
-                <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.hp?.currentHp ?? 0} onChange={(event) => patchEntity({ hp: { currentHp: Number(event.target.value), maxHp: entity.hp?.maxHp ?? 1 } })} />
-              </SheetField>
-              <SheetField label="HP Max">
-                {isEditing ? (
-                  <input type="text" inputMode="numeric" pattern="[0-9]*" value={entity.hp?.maxHp ?? 1} onChange={(event) => patchEntity({ hp: { currentHp: entity.hp?.currentHp ?? 1, maxHp: Number(event.target.value) } })} />
-                ) : (
-                  <output>{entity.hp?.maxHp ?? 1}</output>
+            <section className="sheet-box saves-box">
+              <h3>Saving Throws</h3>
+              <div className="save-list sheet-save-grid">
+                {Object.entries(summary.savingThrows ?? {}).map(([key, value]) => (
+                  <div key={key}><span>{saveLabels[key] ?? titleCase(key)}</span><strong>{value}</strong></div>
+                ))}
+                <div><span>Magic Resistance</span><strong>-</strong></div>
+              </div>
+            </section>
+
+            <section className="sheet-box skills-box">
+              <div className="sheet-box-header">
+                <h3>Skill Targets</h3>
+                {availableSkillPoints > 0 && (
+                  <label className="sheet-toggle">
+                    <input
+                      type="checkbox"
+                      checked={skillPointsEnabled}
+                      disabled={!isEditing}
+                      onChange={(event) => patchEntity({ skills: { ...entity.skills, skillPointsEnabled: event.target.checked } })}
+                    />
+                    Skill points
+                  </label>
                 )}
-              </SheetField>
-              <SheetField label="AC">
-                <output>{summary.armorClass ?? "-"}</output>
-              </SheetField>
-              <SheetField label="Melee">
-                <output>{melee}</output>
-              </SheetField>
-              <SheetField label="Missile">
-                <output>{missile}</output>
-              </SheetField>
-              <SheetField label="Hit Die">
-                <output>{classHitDice(classDef, entity.xp) ?? "-"}</output>
-              </SheetField>
-            </div>
-            <p className="sheet-help">AC is armour + DEX modifier. Melee includes STR. Missile includes DEX.</p>
-          </section>
+              </div>
+              {skillPointsEnabled && remainingSkillPoints > 0 && <p className="skill-points-note">Available skill points to allocate: {remainingSkillPoints}</p>}
+              <SkillTable rows={skillRows} entity={entity} patchEntity={patchEntity} skillPointsEnabled={skillPointsEnabled} isEditing={isEditing} />
+            </section>
 
-          <section className="sheet-box movement-box">
-            <h3>Movement</h3>
-            <div className="movement-grid">
-              <SheetField label="Encounter">
-                <output>{formatEncounterMovement(summary.movementEncounter)}</output>
-              </SheetField>
-              <SheetField label="Exploring">
-                <output>{formatExplorationMovement(summary.movementExploration)}</output>
-              </SheetField>
-              <SheetField label="Overland">
-                <output>{formatOverlandMovement(summary.movementExploration)}</output>
-              </SheetField>
-            </div>
-            <p className="sheet-help">Encounter speed is feet per round. Exploring is feet per turn. Overland is miles per day.</p>
-          </section>
+            {isSpellcaster && (
+              <section className="sheet-box spells-known-box">
+                <h3>Spells Known</h3>
+                <KnownSpells entity={entity} catalogs={catalogs} />
+              </section>
+            )}
+          </aside>
 
-          <section className="sheet-box saves-box">
-            <h3>Saving Throws</h3>
-            <div className="save-grid sheet-save-grid">
-              {Object.entries(summary.savingThrows ?? {}).map(([key, value]) => (
-                <div key={key}>
-                  <span>{saveLabels[key] ?? titleCase(key)}</span>
-                  <strong>{value}</strong>
+          <section className="sheet-right-area">
+            <section className="sheet-box combat-box">
+              <h3>Combat</h3>
+              <div className="combat-summary-grid">
+                <div className="combat-stat-column">
+                  <div><span>AC</span><strong>{summary.armorClass ?? "-"}</strong></div>
+                  <div><span>Melee</span><strong>{melee}</strong></div>
+                  <div><span>Missile</span><strong>{missile}</strong></div>
+                  <div><span>Speed</span><strong>{formatExplorationMovement(summary.movementExploration)}</strong></div>
                 </div>
-              ))}
-            </div>
-          </section>
+                <div className="combat-hand-column">
+                  <div><span>Left hand</span><strong>{leftHandItem ? displayName(leftHandItem.entry, catalogs, viewMode) : "-"}</strong></div>
+                  <div><span>Right hand</span><strong>{rightHandItem ? displayName(rightHandItem.entry, catalogs, viewMode) : "-"}</strong></div>
+                  <div><span>Encounter</span><strong>{formatEncounterMovement(summary.movementEncounter)}</strong></div>
+                  <div><span>Overland</span><strong>{formatOverlandMovement(summary.movementExploration)}</strong></div>
+                </div>
+              </div>
+            </section>
 
-          <section className="sheet-box skills-box">
-            <div className="sheet-box-header">
-              <h3>Skill Targets</h3>
-              {availableSkillPoints > 0 && (
-                <label className="sheet-toggle">
-                  <input
-                    type="checkbox"
-                    checked={skillPointsEnabled}
-                    disabled={!isEditing}
-                    onChange={(event) =>
-                      patchEntity({
-                        skills: {
-                          ...entity.skills,
-                          skillPointsEnabled: event.target.checked
-                        }
-                      })
-                    }
-                  />
-                  Skill points
-                </label>
-              )}
-            </div>
-            {skillPointsEnabled && remainingSkillPoints > 0 && (
-              <p className="skill-points-note">Available skill points to allocate: {remainingSkillPoints}</p>
+            {canTurnUndead && (
+              <section className="sheet-box turn-box">
+                <h3>Turn Undead (2d6)</h3>
+                <TurnUndeadPlaceholder />
+              </section>
             )}
-            <SkillTable rows={skillRows} entity={entity} patchEntity={patchEntity} skillPointsEnabled={skillPointsEnabled} isEditing={isEditing} />
-            <p className="sheet-help">Defaults are 1-in-6 unless class data supplies a better table value.</p>
-          </section>
 
-          <section className="sheet-box features-box">
-            <h3>Class Abilities</h3>
-            <p className="sheet-subhead">Languages: {languages}</p>
-            <FeatureText classDef={classDef} />
-            <label className="notes-block">
-              Public notes
-              <textarea readOnly={!isEditing} value={entity.notes?.publicNotes ?? ""} onChange={(event) => patchEntity({ notes: { ...entity.notes, publicNotes: event.target.value } })} />
-            </label>
-            {viewMode === "gm" && (
-              <label className="notes-block">
-                Referee notes
-                <textarea readOnly={!isEditing} value={entity.notes?.refereeNotes ?? ""} onChange={(event) => patchEntity({ notes: { ...entity.notes, refereeNotes: event.target.value } })} />
-              </label>
+            {isSpellcaster && (
+              <section className="sheet-box spell-slots-box">
+                <h3>Spells</h3>
+                <SpellSlots spellSlots={spellSlots} />
+              </section>
             )}
-          </section>
 
-          <section className="sheet-box inventory-sheet-box">
-            <h3>Inventory</h3>
-            <div className="inventory-sheet-grid">
-              <SheetInventoryTree title="Equipped" nodes={equippedNodes} catalogs={catalogs} viewMode={viewMode} />
-              <SheetInventoryTree title="Stowed" nodes={stowedNodes} catalogs={catalogs} viewMode={viewMode} />
-            </div>
-            <p className="sheet-help">Containers include their contents and start collapsed here for quick table scanning.</p>
+            <section className="sheet-box features-box">
+              <h3>Features and Abilities</h3>
+              <p className="sheet-subhead"><strong>Languages:</strong> {languages}</p>
+              <FeatureText classDef={classDef} />
+            </section>
+
+            <section className="sheet-box inventory-sheet-box">
+              <h3>Inventory</h3>
+              <div className="inventory-sheet-grid">
+                <SheetInventoryTree title="Equipped" nodes={equippedNodes} catalogs={catalogs} viewMode={viewMode} />
+                <SheetInventoryTree title="Stowed" nodes={stowedNodes} catalogs={catalogs} viewMode={viewMode} />
+              </div>
+            </section>
           </section>
         </div>
+
+        <footer className="sheet-notes-area">
+          <label className="notes-block">
+            Public notes
+            <textarea readOnly={!isEditing} value={entity.notes?.publicNotes ?? ""} onChange={(event) => patchEntity({ notes: { ...entity.notes, publicNotes: event.target.value } })} />
+          </label>
+          {viewMode === "gm" && (
+            <label className="notes-block">
+              Referee notes
+              <textarea readOnly={!isEditing} value={entity.notes?.refereeNotes ?? ""} onChange={(event) => patchEntity({ notes: { ...entity.notes, refereeNotes: event.target.value } })} />
+            </label>
+          )}
+        </footer>
       </section>
     </main>
   );
 }
 
-function SheetField({ label, children }: { label: string; children: import("react").ReactNode }) {
-  return <label className="sheet-field"><span>{label}</span>{children}</label>;
-}
 
 function AbilityTable({ entity, patchEntity, isEditing }: { entity: Entity; patchEntity: (patch: Partial<Entity>) => void; isEditing: boolean }) {
   const abilities = entity.abilities ?? {
@@ -369,11 +369,89 @@ function SkillTable({
 }
 
 function FeatureText({ classDef }: { classDef: ClassDefinition | undefined }) {
-  const spellList = classDef?.proficiencies?.spell_list?.id;
+  const spellList = classDef?.proficiencies?.spell_list;
+  const features = splitFeatureText(classDef?.feature_text_raw ?? "");
   return (
-    <div className="feature-text">
-      {spellList && <p><strong>Spell list:</strong> {spellList}</p>}
-      {classDef?.feature_text_raw ? <p>{classDef.feature_text_raw}</p> : <p>No class ability text recorded.</p>}
+    <div className="feature-list">
+      {spellList && (
+        <article>
+          <h4>Spell List</h4>
+          <p>{spellList.source_text ?? spellList.id}</p>
+        </article>
+      )}
+      {classDef?.spellcasting_notes?.map((note, index) => (
+        <article key={`spellcasting-note-${index}`}>
+          <h4>Spellcasting Note</h4>
+          <p>{note}</p>
+        </article>
+      ))}
+      {features.length ? features.map((feature, index) => (
+        <article key={`${feature.title}-${index}`}>
+          <h4>{feature.title}</h4>
+          <p>{feature.description}</p>
+        </article>
+      )) : <p>No class ability text recorded.</p>}
+    </div>
+  );
+}
+
+function splitFeatureText(raw: string): Array<{ title: string; description: string }> {
+  const cleaned = raw
+    .replace(/\r/g, "")
+    .replace(/\n\s*\d+\s*\n/g, "\n")
+    .replace(/\n[^\n]*Level Progression[\s\S]*$/i, "")
+    .trim();
+  if (!cleaned) return [];
+  const lines = cleaned.split("\n").map((line) => line.trim()).filter(Boolean);
+  const skip = /^(Requirements|Prime requisite|Prime requisites|Hit Dice|Maximum level|Armour|Weapons|Languages|Saving Throws|Level\s+XP|D: Death|P: Paralysis)/i;
+  const heading = /^[A-Z][A-Za-z’' -]{2,45}$/;
+  const features: Array<{ title: string; description: string }> = [];
+  let current: { title: string; body: string[] } | null = null;
+
+  for (const line of lines) {
+    if (skip.test(line)) continue;
+    const isHeading = heading.test(line) && line.split(/\s+/).length <= 5 && !/[.:;]/.test(line);
+    if (isHeading) {
+      if (current && current.body.length) features.push({ title: current.title, description: current.body.join(" ") });
+      current = { title: line, body: [] };
+    } else if (current) {
+      current.body.push(line);
+    }
+  }
+  if (current && current.body.length) features.push({ title: current.title, description: current.body.join(" ") });
+  return features.slice(0, 24);
+}
+
+
+function KnownSpells({ entity }: { entity: Entity; catalogs: Catalogs }) {
+  const spellIds = [...(entity.spellcasting?.knownSpells ?? []), ...(entity.spellcasting?.spellbookSpellIds ?? [])];
+  const uniqueSpellIds = Array.from(new Set(spellIds));
+  if (!uniqueSpellIds.length) return <p className="empty-row">No known or spellbook spells recorded yet.</p>;
+  return (
+    <div className="known-spell-list">
+      {uniqueSpellIds.map((spellId) => <span key={spellId}>{spellId}</span>)}
+    </div>
+  );
+}
+
+function SpellSlots({ spellSlots }: { spellSlots: Record<string, number> | null }) {
+  if (!spellSlots || !Object.keys(spellSlots).length) return <p className="empty-row">No spell slot table recorded for this class level.</p>;
+  return (
+    <div className="spell-slot-grid">
+      {Object.entries(spellSlots).map(([level, count]) => (
+        <div key={level}><span>Level {level}</span><strong>{count}</strong></div>
+      ))}
+    </div>
+  );
+}
+
+function TurnUndeadPlaceholder() {
+  const columns = ["1", "2", "3", "4", "5", "6", "7+"];
+  return (
+    <div className="turn-table-placeholder">
+      <div className="turn-row header"><span>HD</span>{columns.map((column) => <strong key={column}>{column}</strong>)}</div>
+      <div className="turn-row muted"><span>Target</span>{columns.map((column) => <em key={column}>—</em>)}</div>
+      <p className="sheet-help">TODO: add structured class-level turning tables. Current class data only exposes this as source text.</p>
     </div>
   );
 }
