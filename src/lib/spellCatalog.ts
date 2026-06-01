@@ -8,7 +8,7 @@ type SpellsFile = {
 let spellCatalogPromise: Promise<SpellCatalog> | null = null;
 
 export function loadSpellCatalog(): Promise<SpellCatalog> {
-  spellCatalogPromise ??= import("../../data/av_converted_spells_character_app.json").then((module) =>
+  spellCatalogPromise ??= import("../../data/ose_af_spells_character_app.json").then((module) =>
     buildSpellCatalog(module.default as SpellsFile)
   );
   return spellCatalogPromise;

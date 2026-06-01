@@ -10,7 +10,6 @@ export function SpellsPage() {
   const [query, setQuery] = useState("");
   const [classId, setClassId] = useState("all");
   const [level, setLevel] = useState("all");
-  const [adaptation, setAdaptation] = useState("all");
 
   useEffect(() => {
     let active = true;
@@ -49,12 +48,10 @@ export function SpellsPage() {
         const matchesQuery = spell.searchText.includes(normalizedQuery);
         const matchesClass = classId === "all" || spell.normalizedClasses.some((spellClass) => spellClass.classId === classId);
         const matchesLevel = level === "all" || spell.normalizedClasses.some((spellClass) => String(spellClass.level) === level);
-        const matchesAdaptation =
-          adaptation === "all" || (adaptation === "adapted" && spell.isAdapted) || (adaptation === "standard" && !spell.isAdapted);
-        return matchesQuery && matchesClass && matchesLevel && matchesAdaptation;
+        return matchesQuery && matchesClass && matchesLevel;
       });
     },
-    [adaptation, classId, level, query, spells]
+    [classId, level, query, spells]
   );
 
   return (
@@ -68,7 +65,7 @@ export function SpellsPage() {
           </div>
           <Search size={18} />
         </div>
-        <div className="reference-toolbar reference-toolbar-four">
+        <div className="reference-toolbar">
           <label>
             <span>Search</span>
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="name, text, range…" />
@@ -95,14 +92,6 @@ export function SpellsPage() {
               ))}
             </select>
           </label>
-          <label>
-            <span>Source</span>
-            <select value={adaptation} onChange={(event) => setAdaptation(event.target.value)}>
-              <option value="all">All spells</option>
-              <option value="standard">Standard</option>
-              <option value="adapted">Adapted</option>
-            </select>
-          </label>
         </div>
         {loading ? <p className="empty-row">Loading spells</p> : null}
         {error ? <p className="empty-row">{error}</p> : null}
@@ -118,7 +107,6 @@ export function SpellsPage() {
                     <span>Range {spell.range ?? "—"}</span>
                     <span>Duration {spell.duration ?? "—"}</span>
                     <span>Save {spell.save ?? "—"}</span>
-                    {spell.isAdapted ? <span>adapted</span> : null}
                   </div>
                 </header>
                 <p>{spell.description}</p>

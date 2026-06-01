@@ -33,9 +33,21 @@ describe("catalog normalization", () => {
   it("loads and derives the async spell catalog", async () => {
     const spellCatalog = await loadSpellCatalog();
     expect(spellCatalog.spells.length).toBeGreaterThan(100);
-    expect(spellCatalog.spells.every((spell) => spell.normalizedClasses.length > 0)).toBe(true);
-    expect(spellCatalog.spellsById["acid-arrow"].searchText).toContain("acid arrow");
-    expect(spellCatalog.spellsById["acid-arrow"].classSummary).toContain("magic-user 2");
+    expect(
+      spellCatalog.spells.every((spell) => spell.id && spell.name && spell.normalizedClasses.length > 0)
+    ).toBe(true);
+    expect(spellCatalog.spellsById["cure-light-wounds-cleric"].searchText).toContain("cure light wounds");
+    expect(spellCatalog.spellsById["cure-light-wounds-cleric"].classSummary).toContain("cleric 1");
+  });
+
+  it("loads OSE Advanced Fantasy spell records by class list without collapsing duplicate names", async () => {
+    const spellCatalog = await loadSpellCatalog();
+    const classes = new Set(spellCatalog.spells.flatMap((spell) => spell.normalizedClasses.map((spellClass) => spellClass.classId)));
+    expect(classes).toEqual(new Set(["cleric", "druid", "illusionist", "magic-user"]));
+
+    const cureLightWounds = spellCatalog.spells.filter((spell) => spell.name === "Cure Light Wounds");
+    expect(cureLightWounds.length).toBeGreaterThan(1);
+    expect(new Set(cureLightWounds.map((spell) => spell.id)).size).toBe(cureLightWounds.length);
   });
 
   it("defaults stackable standard items to a full stack", () => {
