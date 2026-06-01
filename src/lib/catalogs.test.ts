@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCatalogs, classNameToId, defaultInventoryQuantity, normalizeSpellClassId } from "./catalogs";
+import { inventoryRecordTypeForItem } from "./inventoryRecordTypes";
 import { loadSpellCatalog } from "./spellCatalog";
 
 describe("catalog normalization", () => {
@@ -19,6 +20,15 @@ describe("catalog normalization", () => {
     expect(catalogs.classesById["magic-user"].class_name).toBe("Magic-User");
     expect(catalogs.itemsById["item_backpack_001"].container?.capacitySlots).toBeGreaterThan(0);
     expect(catalogs.itemsById["item_belt_pouch_005"].container?.coinCapacity).toBe(100);
+  });
+
+  it("normalizes catalog item record types from legacy item types", () => {
+    const catalogs = buildCatalogs();
+    expect(catalogs.itemsById["item_backpack_001"].recordType).toBe("equipment");
+    expect(catalogs.itemsById["item_torch_056"].recordType).toBe("equipment");
+    expect(catalogs.itemsById["item_dagger_079"].recordType).toBe("weapon");
+    expect(catalogs.itemsById["item_chainmail_068"].recordType).toBe("armor");
+    expect(inventoryRecordTypeForItem({ ...catalogs.itemsById["item_torch_056"], recordType: undefined })).toBe("equipment");
   });
 
   it("loads optional expertise point data only for matching class names", () => {

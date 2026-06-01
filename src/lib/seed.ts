@@ -1,5 +1,6 @@
 import type { Campaign, CoinBreakdown, Entity, HandSlot, InventoryEntry, InventoryLocation, ItemTemplate } from "../types";
 import { classNameToId } from "./catalogs";
+import { withInventoryRecordType } from "./inventoryRecordTypes";
 
 export type CampaignSnapshot = {
   campaign: Campaign;
@@ -167,6 +168,7 @@ export function createStarterCampaign(id: string, name = "Arden Vul Table"): Cam
     entry("entry-mira-pouch", entityIds.mage, "item_belt_pouch_005", 1, { kind: "equipped" }, null, createdAt),
     {
       id: "entry-mira-coins",
+      recordType: "coins",
       entityId: entityIds.mage,
       customItem: createTreasureItem("treasure-mira-coins", "Coins", "Pocket money in Mira's belt pouch.", 1, 1),
       quantity: 35,
@@ -255,8 +257,9 @@ export function createTreasureItem(
   gpValue: number | null,
   slotsPerUnit: number
 ): ItemTemplate {
-  return {
+  return withInventoryRecordType({
     id,
+    recordType: "treasure",
     type: "treasure",
     identified: true,
     name,
@@ -271,7 +274,7 @@ export function createTreasureItem(
     curseDescription: null,
     gpValue,
     treasure: {}
-  };
+  });
 }
 
 function coinEntry(
@@ -283,6 +286,7 @@ function coinEntry(
 ): InventoryEntry {
   return {
     id,
+    recordType: "coins",
     entityId,
     customItem: createTreasureItem(`treasure-${id}`, "Coins", "Coins in the belt pouch.", 1, 1),
     quantity: coins.pp + coins.gp + coins.sp + coins.cp,

@@ -41,6 +41,7 @@ import {
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { defaultInventoryQuantity, itemSearchText } from "../lib/catalogs";
 import { isInventoryLocation } from "../lib/inventoryIntegrity";
+import { inventoryRecordTypeForItemType } from "../lib/inventoryRecordTypes";
 import {
   buildInventoryTree,
   coinBreakdownForEntry,
@@ -1454,6 +1455,7 @@ type ItemDraftFields = {
 function createBlankItem(type: ItemType): ItemTemplate {
   return {
     id: "custom-item",
+    recordType: inventoryRecordTypeForItemType(type),
     type,
     identified: true,
     name: "Custom item",
@@ -1478,6 +1480,7 @@ function createBlankItem(type: ItemType): ItemTemplate {
 function buildItemTemplate(fields: ItemDraftFields): ItemTemplate {
   const item: ItemTemplate = {
     id: fields.id,
+    recordType: inventoryRecordTypeForItemType(fields.type),
     type: fields.type,
     identified: fields.identified,
     name: fields.name.trim(),

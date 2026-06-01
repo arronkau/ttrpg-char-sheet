@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Entity, HandSlot, InventoryEntry, InventoryLocation, ItemTemplate } from "../types";
 import { catalogs } from "./catalogs";
+import { inventoryRecordTypeForEntry, inventoryRecordTypeForItem } from "./inventoryRecordTypes";
 import { isCurrentCampaignSnapshot, validateInventoryPlacement } from "./inventoryIntegrity";
 import {
   armorClass,
@@ -70,7 +71,19 @@ describe("slot and encumbrance rules", () => {
 
     expect(coinTotal(coinBreakdownForEntry(explicitCoins, catalogs)!)).toBe(102);
     expect(entrySlots(explicitCoins, catalogs)).toBe(2);
+    expect(inventoryRecordTypeForEntry(explicitCoins, entryItem(explicitCoins, catalogs))).toBe("coins");
     expect(coinBreakdownForEntry(legacyCoins, catalogs)).toEqual({ pp: 0, gp: 35, sp: 0, cp: 0 });
+    expect(inventoryRecordTypeForEntry(legacyCoins, entryItem(legacyCoins, catalogs))).toBe("coins");
+  });
+
+  it("keeps legacy custom items without recordType classifiable during migration", () => {
+    const legacyGear = customItem({ type: "gear", recordType: undefined });
+    const legacyTreasure = createTreasureItem("gem", "Gem", "Small gem", 50, 0);
+    delete legacyTreasure.recordType;
+
+    expect(inventoryRecordTypeForItem(legacyGear)).toBe("equipment");
+    expect(inventoryRecordTypeForEntry(customInventory("gear", "entity", legacyGear, 1, { kind: "equipped" }), legacyGear)).toBe("equipment");
+    expect(inventoryRecordTypeForItem(legacyTreasure)).toBe("treasure");
   });
 
   it("maps carried slots to movement thresholds", () => {

@@ -6,6 +6,7 @@ import type {
   InventoryLocation,
   ItemTemplate
 } from "../types";
+import { inventoryRecordTypeForEntry, inventoryRecordTypeForItem, isInventoryRecordType } from "./inventoryRecordTypes";
 import type { CampaignSnapshot } from "./seed";
 
 type RecordValue = Record<string, unknown>;
@@ -94,6 +95,7 @@ export function isCurrentCampaignSnapshot(value: unknown, catalogs: Catalogs): v
   for (const entry of entries) {
     if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.entityId !== "string") return false;
     if (!entityIds.has(entry.entityId) || entryById.has(entry.id) || "placement" in entry) return false;
+    if (entry.recordType !== undefined && !isInventoryRecordType(entry.recordType)) return false;
     if (!isInventoryLocation(entry.location)) return false;
     if (entry.handSlot !== undefined && entry.handSlot !== null && !isHandSlotValue(entry.handSlot)) return false;
     entryById.set(entry.id, entry);
@@ -136,11 +138,11 @@ function isCoinPurseItem(item: ItemTemplate): boolean {
 }
 
 function canPlaceInCoinPurse(item: ItemTemplate, entry: InventoryEntry | undefined): boolean {
-  return isCoinEntry(entry, item) || (item.type === "treasure" && item.slotsPerUnit <= 0);
+  return isCoinEntry(entry, item) || (inventoryRecordTypeForItem(item) === "treasure" && item.slotsPerUnit <= 0);
 }
 
 function isCoinEntry(entry: InventoryEntry | undefined, item: ItemTemplate): boolean {
-  return Boolean(entry?.state?.coins) || (item.type === "treasure" && item.name.trim().toLowerCase() === "coins");
+  return entry ? inventoryRecordTypeForEntry(entry, item) === "coins" : inventoryRecordTypeForItem(item) === "treasure" && item.name.trim().toLowerCase() === "coins";
 }
 
 function isRecord(value: unknown): value is RecordValue {

@@ -95,10 +95,13 @@ export type Entity = {
 
 export type ArmorType = "armor" | "shield" | "helmet";
 
+export type InventoryRecordType = "coins" | "treasure" | "weapon" | "armor" | "equipment";
+
 export type ItemType = "weapon" | "armor" | "gear" | "container" | "treasure";
 
 export type ItemTemplate = {
   id: string;
+  recordType?: InventoryRecordType;
   type: ItemType;
   identified: boolean;
   secretDetails?: SecretItemDetails | null;
@@ -181,6 +184,7 @@ export type InventoryEntryState = {
 
 export type InventoryEntry = {
   id: string;
+  recordType?: InventoryRecordType;
   entityId: string;
   itemTemplateId?: string;
   customItem?: ItemTemplate;

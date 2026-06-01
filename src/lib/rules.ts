@@ -15,6 +15,7 @@ import type {
   ViewMode
 } from "../types";
 import { inventoryParentEntryId, isInventoryLocation } from "./inventoryIntegrity";
+import { inventoryRecordTypeForEntry, inventoryRecordTypeForItem } from "./inventoryRecordTypes";
 
 export const EMPTY_ABILITIES = {
   strength: 10,
@@ -226,7 +227,7 @@ export function coinBreakdownForEntry(entry: InventoryEntry, catalogs: Catalogs)
 }
 
 export function isCoinEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
-  return coinBreakdownForEntry(entry, catalogs) !== null;
+  return inventoryRecordTypeForEntry(entry, entryItem(entry, catalogs)) === "coins";
 }
 
 export function isCoinPurseItem(item: ItemTemplate): boolean {
@@ -239,7 +240,7 @@ export function isCoinPurseEntry(entry: InventoryEntry, catalogs: Catalogs): boo
 
 export function isZeroSlotTreasureEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
   const item = entryItem(entry, catalogs);
-  return item.type === "treasure" && !isCoinEntry(entry, catalogs) && entrySlots(entry, catalogs) === 0;
+  return inventoryRecordTypeForEntry(entry, item) === "treasure" && entrySlots(entry, catalogs) === 0;
 }
 
 export function parentEntryId(entry: InventoryEntry): string | null {
@@ -806,6 +807,7 @@ function signedNumber(value: number): string {
 function createMissingItem(id: string): ItemTemplate {
   return {
     id,
+    recordType: "equipment",
     type: "gear",
     identified: true,
     name: "Missing item",
@@ -820,7 +822,7 @@ function createMissingItem(id: string): ItemTemplate {
 function isLegacyCoinEntry(entry: InventoryEntry, catalogs: Catalogs): boolean {
   const item = entryItem(entry, catalogs);
   const name = (entry.state?.customName ?? item.name).trim().toLowerCase();
-  return item.type === "treasure" && name === "coins";
+  return inventoryRecordTypeForItem(item) === "treasure" && name === "coins";
 }
 
 function normalizeCoinCount(value: number | null | undefined): number {

@@ -16,6 +16,7 @@ import { catalogs as staticCatalogs } from "../lib/catalogs";
 import { collectInventoryDescendantIds, isInventoryLocation, validateInventoryPlacement } from "../lib/inventoryIntegrity";
 import { createRepository, type CampaignRepository, type RepositoryKind } from "../lib/repository";
 import { createStarterCampaign, createTreasureItem, makeCampaignId, nowIso } from "../lib/seed";
+import { inventoryRecordTypeForItem, withInventoryRecordType } from "../lib/inventoryRecordTypes";
 import {
   coinTotal,
   displayName,
@@ -220,6 +221,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       const entries = createNewHeldUnitSplit({
         entityId,
         itemTemplateId,
+        recordType: template ? inventoryRecordTypeForItem(template) : undefined,
         quantity: normalizedQuantity,
         location,
         handSlot: normalizedHandSlot,
@@ -234,6 +236,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
+      recordType: template ? inventoryRecordTypeForItem(template) : undefined,
       entityId,
       itemTemplateId,
       quantity: normalizedQuantity,
@@ -266,6 +269,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       const entries = createNewHeldUnitSplit({
         entityId,
         customItem,
+        recordType: inventoryRecordTypeForItem(customItem),
         quantity: normalizedQuantity,
         location,
         handSlot: normalizedHandSlot,
@@ -280,6 +284,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
+      recordType: inventoryRecordTypeForItem(customItem),
       entityId,
       customItem,
       quantity: normalizedQuantity,
@@ -307,6 +312,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     const timestamp = nowIso();
     const entry: InventoryEntry = {
       id: crypto.randomUUID(),
+      recordType: inventoryRecordTypeForItem(item),
       entityId,
       customItem: item,
       quantity: Math.max(1, Math.floor(quantity)),
@@ -350,6 +356,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     if (shouldSplitQuantityForHandUse(normalizedQuantity, customItem, normalizedHandSlot)) {
       const nextOriginal: InventoryEntry = {
         ...entryWithoutTemplate,
+        recordType: inventoryRecordTypeForItem(customItem),
         customItem,
         quantity: normalizedQuantity - 1,
         handSlot: null,
@@ -359,6 +366,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
       const nextSplit: InventoryEntry = {
         ...entryWithoutTemplate,
         id: crypto.randomUUID(),
+        recordType: inventoryRecordTypeForItem(customItem),
         entityId,
         customItem,
         quantity: 1,
@@ -375,6 +383,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
     }
     const nextEntry: InventoryEntry = {
       ...entryWithoutTemplate,
+      recordType: inventoryRecordTypeForItem(customItem),
       entityId,
       customItem,
       quantity: normalizedQuantity,
@@ -433,6 +442,7 @@ export const useCampaignStore = create<CampaignState>((set, get) => ({
 
     const coinEntry: InventoryEntry = {
       id: primaryCoinEntry?.id ?? crypto.randomUUID(),
+      recordType: "coins",
       entityId,
       customItem: createTreasureItem(primaryCoinEntry?.customItem?.id ?? crypto.randomUUID(), "Coins", "Coins in this purse.", null, 1),
       quantity: totalCoins,
@@ -663,7 +673,7 @@ function stateForItemUpdate(item: ItemTemplate, previousState: InventoryEntry["s
   const initialState = initialStateForTemplate(item);
   if (!initialState && !previousState) return undefined;
   const usesRemaining = item.gear?.usesRemaining ?? item.gear?.usesMax ?? previousState?.usesRemaining ?? undefined;
-  const coins = previousState?.coins && item.type === "treasure" && item.name.trim().toLowerCase() === "coins"
+  const coins = previousState?.coins && inventoryRecordTypeForItem(item) === "treasure" && item.name.trim().toLowerCase() === "coins"
     ? normalizeCoins(previousState.coins)
     : undefined;
   if (!initialState && coins) return { coins };
@@ -698,6 +708,7 @@ function createNewHeldUnitSplit({
   entityId,
   itemTemplateId,
   customItem,
+  recordType,
   quantity,
   location,
   handSlot,
@@ -709,6 +720,7 @@ function createNewHeldUnitSplit({
   entityId: string;
   itemTemplateId?: string;
   customItem?: ItemTemplate;
+  recordType?: InventoryEntry["recordType"];
   quantity: number;
   location: InventoryLocation;
   handSlot: HandSlot;
@@ -719,6 +731,7 @@ function createNewHeldUnitSplit({
 }): InventoryEntry[] {
   const carriedEntry: InventoryEntry = {
     id: crypto.randomUUID(),
+    recordType: recordType ?? (customItem ? inventoryRecordTypeForItem(customItem) : undefined),
     entityId,
     quantity: quantity - 1,
     location,
@@ -729,6 +742,7 @@ function createNewHeldUnitSplit({
   };
   const heldEntry: InventoryEntry = {
     id: crypto.randomUUID(),
+    recordType: recordType ?? (customItem ? inventoryRecordTypeForItem(customItem) : undefined),
     entityId,
     quantity: 1,
     location,
@@ -770,8 +784,9 @@ function activeLightState(item: ItemTemplate, previousState: InventoryEntry["sta
 
 function normalizeCustomItem(item: ItemTemplate, fallbackId: string): ItemTemplate {
   const type = item.type;
-  const customItem: ItemTemplate = {
+  const customItem: ItemTemplate = withInventoryRecordType({
     id: item.id || fallbackId,
+    recordType: item.recordType,
     type,
     identified: item.identified ?? true,
     name: item.name.trim() || "Custom item",
@@ -784,7 +799,7 @@ function normalizeCustomItem(item: ItemTemplate, fallbackId: string): ItemTempla
     cursed: item.cursed ?? false,
     curseDescription: item.curseDescription ?? null,
     gpValue: normalizeNullableNumber(item.gpValue)
-  };
+  });
   const description = item.description?.trim();
   if (description) customItem.description = description;
   if (type === "weapon" && item.weapon) customItem.weapon = normalizeWeapon(item.weapon);
@@ -792,7 +807,7 @@ function normalizeCustomItem(item: ItemTemplate, fallbackId: string): ItemTempla
   if (type === "gear") customItem.gear = normalizeGear(item.gear, item.emitsLight);
   if (type === "container" && item.container) customItem.container = normalizeContainer(item.container);
   if (type === "treasure") customItem.treasure = {};
-  return customItem;
+  return withInventoryRecordType(customItem);
 }
 
 function normalizeWeapon(weapon: NonNullable<ItemTemplate["weapon"]>): NonNullable<ItemTemplate["weapon"]> {
